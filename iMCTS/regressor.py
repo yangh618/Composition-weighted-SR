@@ -3,13 +3,11 @@ from typing import Dict, List, Tuple, Optional, Callable
 from sympy import sympify, expand, expand_log
 import time
 import random
+import json
 from iMCTS.mcts import MCTS
 from iMCTS.src import ExpTree, Optimizer
 from iMCTS.gp import GPManager
-import nlopt
-from sympy import symbols, diff, lambdify
 import gc
-from iMCTS.src.utils.reward import jit_compile, sp_module
 
 def simplify_expression(exp_str: str, verbose: bool = False) -> str:
     """Simplify mathematical expression string without relying on class methods."""
@@ -28,7 +26,9 @@ class Regressor:
         self,
         x_train: np.ndarray,
         y_train: np.ndarray,
-        var_count: None,
+        x_valid: np.ndarray = None,
+        y_valid: np.ndarray = None,
+        var_count: int = None,
         ops: List[str] = None,
         arity_dict: Dict[str, int] = None,
         context: Dict = None,
@@ -49,6 +49,10 @@ class Regressor:
         num_parallel: int = 4,
         num_batches: int = 16,
         num_trials: int = 1,
+        lbfgs_upper_bound: float = 47.0,
+        seed: int = None,
+        save_every: int = 0,
+        output_prefix: str = None,
     ):
         """
         Symbolic Regression Regressor with MCTS optimization
@@ -60,10 +64,14 @@ class Regressor:
         """
         # Input validation
         self._validate_inputs(x_train, y_train, max_depth)
+        if x_valid is not None and y_valid is not None:
+            self._validate_inputs(x_valid, y_valid, max_depth)
 
         # Initialize core components
         self.x_train = x_train
         self.y_train = y_train
+        self.x_valid = x_valid
+        self.y_valid = y_valid
         self.verbose = verbose
         self.reward_func = reward_func
         self.current_best_expr = None
@@ -97,15 +105,28 @@ class Regressor:
         )
 
         self.sigma = float(np.std(y_train)) if y_train is not None else 1.0
+        # Store LBFGS bound for weight optimization
+        self.lbfgs_upper_bound = lbfgs_upper_bound
+        # Set seed in __init__ so any pre-fit randomness is also reproducible
+        self.seed = seed
+        if seed is not None:
+            np.random.seed(seed)
+            random.seed(seed)
+        # Intermediate-save settings
+        self.save_every = save_every
+        self.output_prefix = output_prefix
         # Initialize core components
         self.optimizer = Optimizer(
             var_count,
             x_train,
             y_train,
+            x_valid,
+            y_valid,
             self.sigma,
             self.global_context,
             reward_func,
-            optimization_method
+            optimization_method,
+            self.lbfgs_upper_bound
         )
         
         self.exp_tree = self._create_exp_tree()
@@ -121,7 +142,7 @@ class Regressor:
             mcts = self._create_mcts()
             self.start_time = time.time()
             outputs = self.find_best(mcts)
-            exp_str, reward = mcts.exp_queue.best()
+            exp_str, _, _ = mcts.exp_queue.best()
 
             return (
                 simplify_expression(exp_str, self.verbose),
@@ -138,10 +159,19 @@ class Regressor:
         # Track last report time (store on instance so future extensions can reuse)
         last_report_time = getattr(self, '_last_report_time', self.start_time)
         REPORT_INTERVAL = 60.0  # seconds
+        last_saved_interval = -1
         while mcts.count_num < self.max_expressions:
             search_num += 1
             best_reward = mcts.search(self.exp_tree)
             self.print_simple(mcts)
+
+            # Intermediate save based on expression count
+            if self.save_every > 0 and self.output_prefix:
+                current_interval = mcts.count_num // self.save_every
+                if current_interval > last_saved_interval:
+                    self._maybe_save_intermediate(mcts)
+                    last_saved_interval = current_interval
+                    
             now = time.time()
             # Time-based periodic status report (every ~10s)
             if self.verbose and (now - last_report_time >= REPORT_INTERVAL):
@@ -165,40 +195,21 @@ class Regressor:
         outputs = self.save_status(mcts)
         return outputs
 
-    def build_MAE_loss(self, expr_str: str) -> Callable:
-        """Build MAE loss function for given expression string"""
-        #print(expr_str)
-        x_train = self.x_train
-        y_train = self.y_train
-        v_len = self.var_count        
-        vs = [symbols(f'x{i}') for i in range(self.var_count)]
-        f_pred = jit_compile(lambdify(vs, expr_str, modules=sp_module))
-        grad_v = [diff(expr_str, v) for v in vs]
-        grad_v_func = [
-            jit_compile(lambdify(vs, str(grad_v_expr), modules=sp_module)) 
-            for grad_v_expr in grad_v
-            ] if self.var_count > 0 else None
+    def build_MAE_loss(self, expr_str: str, X, Y) -> Callable:
+        """Build MAE loss function for given expression string using Optimizer methods."""
+        class MockState:
+            constant_count = 0
+            real_constant_count = 0
 
-        def mae_loss(params: np.ndarray, grad) -> float:
-            tabulated_weights = np.reshape(params, (v_len, 118))
-            x_bar = np.einsum("ni,vi->nv", x_train, tabulated_weights)
-            y_pred = f_pred(x_bar)
-            if not np.all(np.isfinite(y_pred)):
-                return np.inf
+        state = MockState()
+        # Use a non-zero dummy guess for the validity check to avoid log(0) etc.
+        dummy_guess = np.random.randn(self.var_count * 118) * np.sqrt(5)
+        f_pred_const = self.optimizer.valid_expression(expr_str, state, dummy_guess)
+        if f_pred_const is None:
+            raise ValueError(f"Expression produced non-finite values: {expr_str}")
 
-            if grad.size > 0:
-                for idx, func in enumerate(grad_v_func):
-                    grad_v = func(x_bar)
-                    if not np.all(np.isfinite(grad_v)):
-                        return np.inf
-                    grad[idx*118:(idx+1)*118] = np.mean(
-                        (np.sign(y_pred - y_train) * grad_v)[:, None] * x_train, 
-                        axis=0
-                        )
-
-            mae = np.mean(np.abs(y_pred - y_train))
-            return mae
-        return mae_loss
+        _, grads = self.optimizer.build_expr_and_gradient(expr_str, state)
+        return self.optimizer.build_MAELoss_func(state, X, Y, f_pred_const, grads)
 
     def optimize_weights(self, best_expr, is_positive_init):
         # Optimize for tabulated weights
@@ -206,68 +217,68 @@ class Regressor:
             initial_guess = np.abs(np.random.randn(self.var_count * 118)) * np.sqrt(5)
         else:
             initial_guess = np.random.randn(self.var_count * 118) * np.sqrt(5)
-        n_params = len(initial_guess)
-        # Create an NLopt optimizer object with the specified algorithm.
-        opt = nlopt.opt(self.optimizer.optimization_method, n_params)
-        # Set the objective function to be maximized. We minimize the negative reward.
-        object_func = self.build_MAE_loss(str(best_expr))
-        opt.set_min_objective(object_func)
-
-        # Set a relative tolerance for the optimization.
-        opt.set_xtol_rel(1e-6)
-        # Set a maximum number of evaluations to prevent infinite loops.
-        opt.set_maxeval(200)
-        # --- Start: Set bounds for the optimization parameters ---
-        # Set a uniform lower and upper bound for all parameters.
-        # This is equivalent to the `bounds` parameter in `differential_evolution`.
-        bounds = np.array([-47.0] * n_params)
-        opt.set_lower_bounds(bounds)
-        opt.set_upper_bounds(-bounds) # Using -bounds to get [10.0, 10.0, ...]
-        # --- End: Set bounds ---
-
-        optimized_params = opt.optimize(initial_guess)
+        object_func = self.build_MAE_loss(str(best_expr), self.x_train, self.y_train)
+        optimized_params = self.optimizer.run_nlopt(
+            object_func, initial_guess, self.lbfgs_upper_bound, xtol=1e-6, maxeval=200
+        )
         tabulated_weights = np.reshape(
             optimized_params,
             (self.var_count, 118)
         )
-        y_pred = object_func(optimized_params, np.array([]))  # Get predictions after optimization
-
-        return y_pred, tabulated_weights
+        mae = object_func(optimized_params, np.array([]))  # Get predictions after optimization
+        object_func_valid = self.build_MAE_loss(str(best_expr), self.x_valid, self.y_valid)
+        mae_valid = object_func_valid(optimized_params, np.array([]))
+        return mae, mae_valid, tabulated_weights
 
     def print_simple(self, mcts) -> None:
-        best_expr, best_reward = mcts.exp_queue.best()
-        mae = (1/best_reward-1) * self.sigma if best_reward > 0 else float('inf')
+        best_expr, best_train_reward, best_valid_reward = mcts.exp_queue.best()
+        train_mae = (1/best_train_reward-1) * self.sigma if best_train_reward > 0 else float('inf')
+        valid_mae = (1/best_valid_reward-1) * self.sigma if best_valid_reward > 0 else float('inf')
         report = [
             "\n\033[1;36m=== Symbolic Regression Progress Report ===\033[0m",
             f"\033[1mEvaluated Expressions:\033[0m {mcts.count_num}",
             "\n\033[1mTop Performance Metrics:\033[0m",
             f"  \033[32mBest Expression:\033[0m \n{best_expr}",
-            f"  \033[33mReward (↑):\033[0m {best_reward:.3e} | MAE (↓): {mae:.3e}",
+            f"  \033[33mTrain Reward (↑):\033[0m {best_train_reward:.3e} | MAE (↓): {train_mae:.3e}",
+            f"  \033[33mValid Reward (↑):\033[0m {best_valid_reward:.3e} | MAE (↓): {valid_mae:.3e}",
             "\n\033[1mExploration Profile:\033[0m",
             f"  Total Nodes: {mcts.total_nodes} | Active Branches: {len(mcts.root.children)}",
             f"  Exploration Rate: {self.exploration_rate:.2f} | Mutation Rate: {self.mutation_rate:.2f}"
         ]
         print("\n".join(report))
 
+    def _maybe_save_intermediate(self, mcts: MCTS) -> None:
+        """Save intermediate results to a JSON file if save_every is enabled."""
+        if self.save_every <= 0 or not self.output_prefix:
+            return
+        outputs = self.save_status(mcts)
+        filename = f"{self.output_prefix}_step{mcts.count_num}.json"
+        try:
+            with open(filename, 'w') as f:
+                json.dump(outputs, f, indent=2)
+            print(f"  [Intermediate save] {filename}")
+        except Exception as e:
+            print(f"  [Intermediate save failed] {e}")
+
     def save_status(self, mcts) -> List[Dict]:
-        """Save and return the top 10 expressions with their optimized weights and metrics"""
+        """Save and return the top 3 expressions with their optimized weights and metrics"""
         outputs = []
-        for i in range(min(10, len(mcts.exp_queue.list))):
+        for i in range(min(3, len(mcts.exp_queue.list))):
             # Get the top expressions
-            best_expr, best_reward = mcts.exp_queue.list[i]
-            y_true = self.y_train
+            best_expr, train_reward, best_reward = mcts.exp_queue.list[i]
             entry = {}
 
             min_mae = float('inf')
+            min_mae_valid = float('inf')
             weights = None
             y_pred = None
             for i in range((self.num_trials + 4) * 2):
                 is_positive_init = (i < self.num_trials + 4)
                 try:
-                    y_pred, tabulated_weights = self.optimize_weights(best_expr, is_positive_init)
-                    mae = np.mean(np.abs(y_pred - y_true))
-                    if mae < min_mae:
+                    mae, mae_valid, tabulated_weights = self.optimize_weights(best_expr, is_positive_init)
+                    if mae_valid < min_mae_valid:
                         min_mae = mae
+                        min_mae_valid = mae_valid
                         weights = tabulated_weights
                 except Exception:
                     #print(f"Weight optimization failed for expression {best_expr}: {e}")
@@ -281,8 +292,10 @@ class Regressor:
             # Store results in entry
             entry['expression'] = str(best_expr)  # Ensure it's a string
             entry['weights'] = weights.tolist() if weights is not None else None
-            entry['reward'] = float(best_reward)  # Ensure float
+            entry['train_reward'] = float(train_reward)  # Ensure float
+            entry['valid_reward'] = float(best_reward)  # Ensure float
             entry['mae'] = float(min_mae)  # Ensure float
+            entry['mae_valid'] = float(min_mae_valid)  # Ensure float
             entry['rank'] = i + 1  # Add rank (1-based)
 
             outputs.append(entry)
@@ -417,5 +430,6 @@ class Regressor:
             num_parallel=self.num_parallel,
             num_batches=self.num_batches,
             num_trials=self.num_trials,
-            verbose=self.verbose
+            verbose=self.verbose,
+            seed=self.seed,
         )

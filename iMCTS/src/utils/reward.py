@@ -66,12 +66,25 @@ class Optimizer:
     - Reduce attribute / global lookups in hot sections via local bindings.
     """
 
-    def __init__(self, var_count: int, x_train: np.ndarray, y_train: np.ndarray, 
-                 sigma: None, context: dict[str, Any],
-                 cal_reward: Callable | None = None, optimization_method: str = 'LN_NELDERMEAD'):
+    def __init__(self, 
+                 var_count: int, 
+                 x_train: np.ndarray, 
+                 y_train: np.ndarray, 
+                 x_valid: np.ndarray = None,
+                 y_valid: np.ndarray = None,
+                 sigma: float = None, 
+                 context: dict[str, Any] = None,
+                 reward_func: Callable = None,
+                 optimization_method: str = 'LN_NELDERMEAD',
+                 lbfgs_upper_bound: float = 47.0,
+                 ):
         self.var_count = var_count
+        self.lbfgs_upper_bound = lbfgs_upper_bound
         self.x_train = x_train
         self.y_train = y_train
+        self.x_valid = x_valid
+        self.y_valid = y_valid
+
         # Precompute target std (σ). If y_train is None, default to 1.0 to avoid div-by-zero.
         if sigma is not None:
             self.sigma = sigma
@@ -98,8 +111,8 @@ class Optimizer:
         # Quick rejection: if expression already contains invalid tokens, skip optimization entirely.
         if any(tok in expression for tok in ("zoo", "nan", "inf")):
             if state.constant_count > 0:
-                return expression, 0.0
-            return expression, 0.0
+                return expression, 0.0, 0.0
+            return expression, 0.0, 0.0
 
         grads = None
         f_pred_const = None
@@ -119,57 +132,54 @@ class Optimizer:
             # so we do a quick check first.
             f_pred_const = self.valid_expression(expression, state, initial_guess)
             if f_pred_const is None:
-                return expression, 0.0
+                return expression, 0.0, 0.0
         
             # Build once (slightly faster than eval of string each param iteration inside minimize)
             # NOTE: context is trusted upstream. If untrusted, this is a code injection risk.
-            #print("Building objective function and gradients...")
             expression, grads = self.build_expr_and_gradient(expression, state)
-            # Create an NLopt optimizer object with the specified algorithm.
-            opt = nlopt.opt(self.optimization_method, n_params)
-            
-            # Set the objective function to be maximized. We minimize the negative reward.
-            #print("Building loss function...")
-            object_func = self.build_MAELoss_func(state, f_pred_const, grads)
-            opt.set_min_objective(object_func)
+            object_func = self.build_MAELoss_func(state, self.x_train, self.y_train, f_pred_const, grads)
 
-            # Set a relative tolerance for the optimization.
-            opt.set_xtol_rel(opt_tol)
-            # Set a maximum number of evaluations to prevent infinite loops.
-            opt.set_maxeval(opt_max_step)
-
-            # --- Start: Set bounds for the optimization parameters ---
-            # Set a uniform lower and upper bound for all parameters.
-            # This is equivalent to the `bounds` parameter in `differential_evolution`.
-            bounds = np.array([-47.0] * n_params)
-            opt.set_lower_bounds(bounds)
-            opt.set_upper_bounds(-bounds) # Using -bounds to get [10.0, 10.0, ...]
-            # --- End: Set bounds ---
-
-            # Run the optimization.
-            #print("Running optimization...")
-            optimized_params = opt.optimize(initial_guess)
+            # Run the optimization using the generic NLopt runner.
+            optimized_params = self.run_nlopt(object_func, initial_guess, self.lbfgs_upper_bound, xtol=opt_tol, maxeval=opt_max_step)
 
         # except nlopt.Failure as e:
         #     print(f"NLopt optimization failed: {e}")
         #    return expression, 0.0
         except Exception:
             #print(f"An unexpected error occurred during NLopt optimization: {e}")
-            return expression, 0.0
+            return expression, 0.0, 0.0 # train_reward, valid_reward are both 0 if failed
 
         # Compile final expression to a single lambda for evaluation.
         try:
             expression = self.compile_expression(expression, state, optimized_params)
         except Exception:
-            return expression, 0.0
+            return expression, 0.0, 0.0 # train_reward, valid_reward are both 0 if failed
 
         mae = object_func(optimized_params, np.empty(0))
         reward = 1.0 / (1.0 + mae/self.sigma)
         # print(expression, float(reward))
+        
+        if self.x_valid is None:
+            return expression, float(reward), float(reward)
+        else:
+            object_func = self.build_MAELoss_func(state, self.x_valid, self.y_valid, f_pred_const, grads)
+            mae = object_func(optimized_params, np.empty(0))
+            reward_valid = 1.0 / (1.0 + mae/self.sigma)
+            return expression, float(reward), float(reward_valid)
 
-        return expression, float(reward)
+    def run_nlopt(self, objective_func, initial_guess, bounds, xtol=1e-6, maxeval=200):
+        """Generic NLopt optimization runner shared across modules."""
+        n_params = len(initial_guess)
+        opt = nlopt.opt(self.optimization_method, n_params)
+        opt.set_min_objective(objective_func)
+        opt.set_xtol_rel(xtol)
+        opt.set_maxeval(maxeval)
+        bounds_arr = np.array([-bounds] * n_params)
+        opt.set_lower_bounds(bounds_arr)
+        opt.set_upper_bounds(-bounds_arr)
+        return opt.optimize(initial_guess)
 
-    def build_MAELoss_func(self, state, f_pred_const, grads) -> Callable:
+    def build_MAELoss_func(self, state, x_train, y_train, f_pred_const, grads) -> Callable:
         """
         Build a Mean Absolute Error (MAE) loss function for NLopt optimization.
 
@@ -195,8 +205,6 @@ class Optimizer:
         """
         v_len = self.var_count  # Number of input variables
         w_len = v_len * 118     # Total length of tabulated weights (118 per variable)
-        x_train = self.x_train  # Capture as local variable for closure
-        y_train = self.y_train  # Capture as local variable for closure
 
         # Unpack gradient functions for variables, real constants, and complex constants
         grad_v_func, grad_r_func, grad_c_func = grads

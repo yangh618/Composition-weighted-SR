@@ -4,8 +4,8 @@
 
 echo "Running TISR with all available options..."
 
-python run_tisr.py \
-       --task matbench_glass \
+python run_cwsr.py \
+       --task matbench_expt_gap \
        --fold -1 \
        --ops mul sub add div sqrt exp log Max Min Pow R\
        --var_count 3 \
@@ -15,10 +15,13 @@ python run_tisr.py \
        --max_constants 8 \
        --exploration_rate 0.2 \
        --max_depth 6 \
-       --max_expressions 100 \
+       --max_expressions 1000 \
+       --save_every 1000 \
        --optimization_method LD_LBFGS \
-       --num_parallel 1 \
-       --num_batches 1      \
-       --num_trials 1 #2>/tmp/NUL
+       --seed 42 \
+       --output_dir ./test \
+       --num_parallel 12 \
+       --num_batches 48      \
+       --num_trials 2 #2>/tmp/NUL
 
 echo "TISR run completed!"
