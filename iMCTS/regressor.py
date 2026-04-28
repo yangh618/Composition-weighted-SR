@@ -52,6 +52,7 @@ class Regressor:
         lbfgs_upper_bound: float = 47.0,
         seed: int = None,
         save_every: int = 0,
+        save_checkpoint_every: int = 0,
         output_prefix: str = None,
     ):
         """
@@ -114,6 +115,7 @@ class Regressor:
             random.seed(seed)
         # Intermediate-save settings
         self.save_every = save_every
+        self.save_checkpoint_every = save_checkpoint_every
         self.output_prefix = output_prefix
         # Initialize core components
         self.optimizer = Optimizer(
@@ -131,7 +133,7 @@ class Regressor:
         
         self.exp_tree = self._create_exp_tree()
 
-    def fit(self, seed: int = None) -> Tuple[str, str, int, int, List[Dict]]:
+    def fit(self, seed: int = None, checkpoint: dict = None) -> Tuple[str, str, int, int, List[Dict]]:
         """Perform symbolic regression search"""
         # Set random seed
         if seed is not None:
@@ -140,6 +142,10 @@ class Regressor:
 
         with np.errstate(all='ignore'):
             mcts = self._create_mcts()
+            if checkpoint is not None:
+                from iMCTS.checkpoint import mcts_from_dict
+                mcts_from_dict(checkpoint, mcts)
+                print(f"[Checkpoint] Resumed MCTS from {mcts.count_num} evaluations")
             self.start_time = time.time()
             outputs = self.find_best(mcts)
             exp_str, _, _ = mcts.exp_queue.best()
@@ -159,7 +165,8 @@ class Regressor:
         # Track last report time (store on instance so future extensions can reuse)
         last_report_time = getattr(self, '_last_report_time', self.start_time)
         REPORT_INTERVAL = 60.0  # seconds
-        last_saved_interval = -1
+        last_saved_interval = 0
+        last_checkpoint_interval = 0
         while mcts.count_num < self.max_expressions:
             search_num += 1
             best_reward = mcts.search(self.exp_tree)
@@ -171,6 +178,13 @@ class Regressor:
                 if current_interval > last_saved_interval:
                     self._maybe_save_intermediate(mcts)
                     last_saved_interval = current_interval
+
+            # Checkpoint save based on expression count
+            if self.save_checkpoint_every > 0 and self.output_prefix:
+                current_ckpt_interval = mcts.count_num // self.save_checkpoint_every
+                if current_ckpt_interval > last_checkpoint_interval:
+                    self._maybe_save_checkpoint(mcts)
+                    last_checkpoint_interval = current_ckpt_interval
                     
             now = time.time()
             # Time-based periodic status report (every ~10s)
@@ -260,6 +274,18 @@ class Regressor:
         except Exception as e:
             print(f"  [Intermediate save failed] {e}")
 
+    def _maybe_save_checkpoint(self, mcts: MCTS) -> None:
+        """Save full MCTS checkpoint to a JSON file if save_checkpoint_every is enabled."""
+        if self.save_checkpoint_every <= 0 or not self.output_prefix:
+            return
+        from iMCTS.checkpoint import save_checkpoint
+        filename = f"{self.output_prefix}_ckpt_step{mcts.count_num}.json"
+        try:
+            save_checkpoint(filename, mcts)
+            print(f"  [Checkpoint save] {filename}")
+        except Exception as e:
+            print(f"  [Checkpoint save failed] {e}")
+
     def save_status(self, mcts) -> List[Dict]:
         """Save and return the top 3 expressions with their optimized weights and metrics"""
         outputs = []
@@ -272,8 +298,8 @@ class Regressor:
             min_mae_valid = float('inf')
             weights = None
             y_pred = None
-            for i in range((self.num_trials + 4) * 2):
-                is_positive_init = (i < self.num_trials + 4)
+            for j in range((self.num_trials + 4) * 2):
+                is_positive_init = (j < self.num_trials + 4)
                 try:
                     mae, mae_valid, tabulated_weights = self.optimize_weights(best_expr, is_positive_init)
                     if mae_valid < min_mae_valid:

@@ -182,6 +182,18 @@ Examples:
         help='Save intermediate results every N expression evaluations. 0 disables intermediate saving (default: 0)'
     )
     runtime_group.add_argument(
+        '--save_checkpoint_every',
+        type=int,
+        default=0,
+        help='Save full checkpoint every N expression evaluations for resume. 0 disables checkpoint saving (default: 0)'
+    )
+    runtime_group.add_argument(
+        '--checkpoint',
+        type=str,
+        default=None,
+        help='Path to a checkpoint file to resume from. Overrides MCTS state and continues search.'
+    )
+    runtime_group.add_argument(
         '--param_file',
         type=str,
         default=None,
@@ -361,6 +373,8 @@ def main():
     y_train = targets[train_indices]
     x_valid = compositions[valid_indices]
     y_valid = targets[valid_indices]
+    #x_valid = compositions
+    #y_valid = targets
 
     # Build output prefix for intermediate saves
     timestamp = int(time.time())
@@ -388,16 +402,28 @@ def main():
         lbfgs_upper_bound=args.lbfgs_upper_bound,
         seed=args.seed,
         save_every=args.save_every,
+        save_checkpoint_every=args.save_checkpoint_every,
         output_prefix=output_prefix,
     )
 
+    # Handle checkpoint resume
+    checkpoint_data = None
+    if args.checkpoint and Path(args.checkpoint).exists():
+        from iMCTS.checkpoint import load_checkpoint
+        checkpoint_data = load_checkpoint(args.checkpoint)
+        print(f"[Checkpoint] Loaded checkpoint from {args.checkpoint}")
+
     # Run symbolic regression
     print("Starting symbolic regression search...")
-    # sym_exp, vec_exp, evaluations, path, outputs = model.fit()    
     try:
-        sym_exp, vec_exp, evaluations, path, outputs = model.fit(seed=args.seed)
+        mcts_checkpoint = checkpoint_data["mcts"] if checkpoint_data else None
+        sym_exp, vec_exp, evaluations, path, outputs = model.fit(
+            seed=args.seed, checkpoint=mcts_checkpoint
+        )
     except Exception as e:
         print(f"Error during symbolic regression: {e}")
+        import traceback
+        traceback.print_exc()
         return
 
     # Save outputs

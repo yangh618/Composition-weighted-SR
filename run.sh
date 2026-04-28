@@ -15,10 +15,10 @@ python run_cwsr.py \
        --max_constants 8 \
        --exploration_rate 0.2 \
        --max_depth 6 \
-       --max_expressions 1000 \
-       --save_every 1000 \
+       --max_expressions 10000 \
+       --save_every 5000 \
+       --save_checkpoint_every 5000 \
        --optimization_method LD_LBFGS \
-       --seed 42 \
        --output_dir ./test \
        --num_parallel 12 \
        --num_batches 48      \
