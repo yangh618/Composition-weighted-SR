@@ -1,0 +1,35 @@
+# data
+*npy
+*npz
+*db
+*nbc
+
+# compilation directory
+*pyc
+
+# saved model directory
+*pth
+models
+*pt
+*ipynb
+
+# figures
+fig
+
+# bash scripts
+rsync.sh
+
+# sim directory
+sim
+
+experiments
+test
+examples
+
+# emacs bak files
+*~
+
+# results
+*pdf
+*png
+*eps
