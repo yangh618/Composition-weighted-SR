@@ -1,0 +1,91 @@
+#+options: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+options: author:t broken-links:nil c:nil creator:nil
+#+options: d:(not "LOGBOOK") date:t e:t email:nil expand-links:t f:t
+#+options: inline:t num:t p:nil pri:nil prop:nil stat:t tags:t
+#+options: tasks:t tex:t timestamp:t title:t toc:t todo:t |:t
+#+title: Composition-weighted Symbolic Regression (CWSR)
+#+date: <2026-05-02 Sat>
+#+author: Huang, Yang
+#+language: en
+#+select_tags: export
+#+exclude_tags: noexport
+#+creator: Emacs 30.2 (Org mode 9.7.11)
+
+Symbolic regression for materials science. Discovers interpretable mathematical
+expressions that map chemical compositions to target properties.
+
+** Quick start
+
+#+begin_src bash
+  conda env create -f environment.yml
+  conda activate cwsr
+  pip install -e .
+#+end_src
+
+** Usage
+
+Write your own script using the =Regressor= class. Here is a minimal example:
+
+#+begin_src python
+  import numpy as np
+  from iMCTS import Regressor
+
+  # Your data: compositions (n_samples, 118) and targets (n_samples,)
+  x_train = np.load("compositions.npy")
+  y_train = np.load("targets.npy")
+
+  model = Regressor(
+      x_train=x_train,
+      y_train=y_train,
+      ops=["mul", "sub", "add", "div", "sqrt", "exp", "log"],
+      var_count=3,
+      max_expressions=5000,
+      max_depth=6,
+      K=100,
+      num_parallel=8,
+  )
+
+  sym_exp, vec_exp, evals, path, outputs = model.fit()
+  print(f"Best expression: {sym_exp}")
+#+end_src
+
+See =run_cwsr.py= for a complete example using Matbench datasets.
+
+** CLI (Matbench example)
+
+The included =run_cwsr.py= demonstrates CWSR on Matbench benchmarks:
+
+#+begin_src bash
+  python run_cwsr.py --max_expressions 200
+#+end_src
+
+| Argument               | Default | Description                              |
+|------------------------+---------+------------------------------------------|
+| =--ops=                | mul sub add div sqrt exp log R | Operators          |
+| =--var_count=          | 4       | Number of latent variables               |
+| =--max_expressions=    | 200     | Max expressions to evaluate              |
+| =--max_depth=          | 6       | Max expression tree depth                |
+| =--max_constants=      | 6       | Max number of constants                  |
+| =--K=                  | 10      | MCTS exploration parameter               |
+| =--gp_rate=            | 0.0     | Genetic programming rate                 |
+| =--mutation_rate=      | 0.2     | Mutation rate                            |
+| =--exploration_rate=   | 0.2     | Exploration rate                         |
+| =--optimization_method=| LD_LBFGS| NLopt optimization method                |
+| =--num_parallel=       | 8       | Parallel processes                       |
+| =--num_batches=        | 64      | Batches per MCTS iteration               |
+| =--num_trials=         | 1       | Optimization trials                      |
+| =--seed=               | None    | Random seed                              |
+| =--output_dir=         | .       | Output directory                         |
+| =--checkpoint=         | None    | Resume from checkpoint                   |
+| =--save_checkpoint_every=| 0     | Save checkpoint every N evaluations      |
+| =--save_every=         | 0       | Save intermediate results every N        |
+
+** Evaluate
+
+#+begin_src bash
+  python eval.py --model_path ./outputs.json
+#+end_src
+
+** License
+
+MIT
