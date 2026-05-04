@@ -217,7 +217,8 @@ class Regressor:
 
         state = MockState()
         # Use a non-zero dummy guess for the validity check to avoid log(0) etc.
-        dummy_guess = np.random.randn(self.var_count * 118) * np.sqrt(5)
+        # ensure a positive guess to avoid issues with sqrt, log, etc. during validity check
+        dummy_guess = np.abs(np.random.randn(self.var_count * 118) * np.sqrt(5))
         f_pred_const = self.optimizer.valid_expression(expr_str, state, dummy_guess)
         if f_pred_const is None:
             raise ValueError(f"Expression produced non-finite values: {expr_str}")
@@ -240,7 +241,11 @@ class Regressor:
             (self.var_count, 118)
         )
         mae = object_func(optimized_params, np.array([]))  # Get predictions after optimization
-        object_func_valid = self.build_MAE_loss(str(best_expr), self.x_valid, self.y_valid)
+        # If no validation data, use training data for validation MAE as well (to avoid errors)
+        if self.x_valid is None or self.y_valid is None:
+            object_func_valid = self.build_MAE_loss(str(best_expr), self.x_train, self.y_train)
+        else:
+            object_func_valid = self.build_MAE_loss(str(best_expr), self.x_valid, self.y_valid)          
         mae_valid = object_func_valid(optimized_params, np.array([]))
         return mae, mae_valid, tabulated_weights
 
@@ -287,9 +292,9 @@ class Regressor:
             print(f"  [Checkpoint save failed] {e}")
 
     def save_status(self, mcts) -> List[Dict]:
-        """Save and return the top 3 expressions with their optimized weights and metrics"""
+        """Save and return the top 10 expressions with their optimized weights and metrics"""
         outputs = []
-        for i in range(min(3, len(mcts.exp_queue.list))):
+        for i in range(min(10, len(mcts.exp_queue.list))):
             # Get the top expressions
             best_expr, train_reward, best_reward = mcts.exp_queue.list[i]
             entry = {}
