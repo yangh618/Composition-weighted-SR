@@ -1,202 +1,127 @@
+# Composition-weighted Symbolic Regression (CWSR)
 
-# Table of Contents
+CWSR discovers compact, interpretable analytical expressions that map
+**chemical composition → a target property** using a Monte-Carlo-Tree-Search
+(MCTS) driven symbolic-regression engine. It is **task-agnostic**: the same
+code runs on Matbench benchmarks, alloy databases, or your own composition
+datasets.
 
-1.  [Quick start](#org751be22)
-2.  [Usage](#orga368360)
-3.  [CLI (Matbench example)](#org54774a4)
-4.  [Evaluate](#orgde6de4b)
-5.  [License](#orgdb2d686)
+> The engine in this package was originally built on iMCTS but has been heavily
+> reworked and flattened into `cwsr`; all imports use `cwsr.*`.
 
-Symbolic regression for materials science. Discovers interpretable mathematical
-expressions that map chemical compositions to target properties.
+## Model form
 
+Each sample is a 118-dim atomic-fraction composition vector `comp`. A learned
+model is:
 
-<a id="org751be22"></a>
+```
+y = f(W @ comp)
+```
 
-# Quick start
+- `comp` : (118,) composition (atomic fractions, ordered by atomic number)
+- `W`    : (var_count, 118) tabulated per-element weights found by the search
+- `f`    : a symbolic expression in `var_count` latent variables `x0 … x_{v-1}`
 
-    conda env create -f environment.yml
-    conda activate cwsr
-    pip install -e .
+## Key features
 
+- **MCTS-driven symbolic regression** engine (`cwsr.Regressor`, `cwsr.mcts`, …)
+- **Task-agnostic datasets**: Matbench, alloy `.npz` databases, or any custom
+  composition dataset via `cwsr.datasets.get_dataset(...)`
+- Element-safe train/valid splits (every element in the data stays in training)
+- Forward evaluation + **analytic gradients**, and formula→value query
+- Unified training drivers, CLI entry points, and smoke tests (on `develop`)
 
-<a id="orga368360"></a>
+## Documentation
 
-# Usage
+- **[Tutorial](docs/tutorial.md)** — step-by-step examples
+- **[API Reference](docs/reference.md)** — full manual for every public API
+- **[Design & roadmap](docs/design.md)** — architecture and merge plan
 
-Write your own script using the `Regressor` class. Here is a minimal example:
+## Install
 
-    import numpy as np
-    from cwsr import Regressor
-    
-    # Your data: compositions (n_samples, 118) and targets (n_samples,)
-    x_train = np.load("compositions.npy")
-    y_train = np.load("targets.npy")
-    
-    model = Regressor(
-        x_train=x_train,
-        y_train=y_train,
-        ops=["mul", "sub", "add", "div", "sqrt", "exp", "log"],
-        var_count=3,
-        max_expressions=5000,
-        max_depth=6,
-        K=100,
-        num_parallel=8,
-    )
-    
-    sym_exp, vec_exp, evals, path, outputs = model.fit()
-    print(f"Best expression: {sym_exp}")
+Requires Python ≥ 3.10. In a conda environment:
 
-See `run_cwsr.py` for a complete example using Matbench datasets.
+```bash
+conda env create -f environment.yml   # creates env `cwsr`
+conda activate cwsr
+pip install -e .
+```
 
+Or with plain pip (after installing the numerical deps):
 
-<a id="org54774a4"></a>
+```bash
+python -m pip install -r requirements.txt
+pip install -e .
+```
 
-# CLI (Matbench example)
+## Quick start
 
-The included `run_cwsr.py` demonstrates CWSR on Matbench benchmarks:
+### High-level (recommended)
 
-    python run_cwsr.py --max_expressions 200
+Load any dataset by name through the registry, then fit:
 
-<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+```python
+from cwsr.datasets import get_dataset
+from cwsr.model import fit_dataset
 
+ds = get_dataset("matbench_expt_gap", fold=0)   # or "alloy_density", or a .npz path
 
-<colgroup>
-<col  class="org-left" />
+outputs = fit_dataset(
+    ds,
+    output_dir="results",
+    var_count=3,                                  # latent variables
+    ops=["mul", "add", "sub", "R"],               # allowed operators
+    max_expressions=2000, max_depth=6,
+    num_parallel=8, seed=0,
+)
 
-<col  class="org-right" />
+best = outputs[0]
+print(best["expression"])                          # e.g. '0.31*x0 + 1.04*x2'
+```
 
-<col  class="org-left" />
-</colgroup>
-<thead>
-<tr>
-<th scope="col" class="org-left">Argument</th>
-<th scope="col" class="org-right">Default</th>
-<th scope="col" class="org-left">Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td class="org-left"><code>--ops</code></td>
-<td class="org-right">mul sub add div sqrt exp log R</td>
-<td class="org-left">Operators</td>
-</tr>
+### Low-level engine
 
-<tr>
-<td class="org-left"><code>--var_count</code></td>
-<td class="org-right">4</td>
-<td class="org-left">Number of latent variables</td>
-</tr>
+```python
+import numpy as np
+from cwsr import Regressor
 
-<tr>
-<td class="org-left"><code>--max_expressions</code></td>
-<td class="org-right">200</td>
-<td class="org-left">Max expressions to evaluate</td>
-</tr>
+# X: (n_samples, 118) compositions, y: (n_samples,) targets
+model = Regressor(
+    x_train=X, y_train=y,
+    var_count=3, ops=["mul", "sub", "add", "div", "sqrt", "exp", "log", "R"],
+    max_expressions=5000, max_depth=6, num_parallel=8,
+)
+simplified, raw, n_evaluations, path, outputs = model.fit(seed=0)
+print(f"Best expression: {outputs[0]['expression']}")
+```
 
-<tr>
-<td class="org-left"><code>--max_depth</code></td>
-<td class="org-right">6</td>
-<td class="org-left">Max expression tree depth</td>
-</tr>
+See the [Tutorial](docs/tutorial.md) for loading custom `.npz` data, using the
+forward/query/gradient helpers, and adding your own datasets.
 
-<tr>
-<td class="org-left"><code>--max_constants</code></td>
-<td class="org-right">6</td>
-<td class="org-left">Max number of constants</td>
-</tr>
+## Repository layout
 
-<tr>
-<td class="org-left"><code>--K</code></td>
-<td class="org-right">10</td>
-<td class="org-left">MCTS exploration parameter</td>
-</tr>
+```
+cwsr/            engine (regressor, mcts, gp, exp_tree, exp_queue, reward,
+                 checkpoint) + framework (datasets, model, predict, formula)
+docs/            tutorial.md, reference.md, design.md (+ MkDocs site config)
+mkdocs.yml       documentation site configuration
+dataloader.py    Matbench data loader (legacy top-level)
+eval.py, run_cwsr.py   Matbench CLI/eval runners (legacy top-level)
+examples/        local examples + alloy databases (not committed)
+tests/           smoke + sanity tests (maintained on the develop branch)
+```
 
-<tr>
-<td class="org-left"><code>--gp_rate</code></td>
-<td class="org-right">0.0</td>
-<td class="org-left">Genetic programming rate</td>
-</tr>
+## Supported & extensible datasets
 
-<tr>
-<td class="org-left"><code>--mutation_rate</code></td>
-<td class="org-right">0.2</td>
-<td class="org-left">Mutation rate</td>
-</tr>
+- Matbench tasks (e.g. `matbench_expt_gap`, `matbench_glass`, …)
+- Alloy databases (`alloy_density`, `alloy_hardness`, …) from `.npz` files
+- Any `.npz` with `targets`, `formulas`, `target_name`, `source` keys, or a
+  custom provider registered via `cwsr.datasets.register_provider`
 
-<tr>
-<td class="org-left"><code>--exploration_rate</code></td>
-<td class="org-right">0.2</td>
-<td class="org-left">Exploration rate</td>
-</tr>
+## Versioning
 
-<tr>
-<td class="org-left"><code>--optimization_method</code></td>
-<td class="org-right">LD<sub>LBFGS</sub></td>
-<td class="org-left">NLopt optimization method</td>
-</tr>
+Current release: **v0.1.0** (package `version` and `cwsr.__version__` aligned).
 
-<tr>
-<td class="org-left"><code>--num_parallel</code></td>
-<td class="org-right">8</td>
-<td class="org-left">Parallel processes</td>
-</tr>
+## License
 
-<tr>
-<td class="org-left"><code>--num_batches</code></td>
-<td class="org-right">64</td>
-<td class="org-left">Batches per MCTS iteration</td>
-</tr>
-
-<tr>
-<td class="org-left"><code>--num_trials</code></td>
-<td class="org-right">1</td>
-<td class="org-left">Optimization trials</td>
-</tr>
-
-<tr>
-<td class="org-left"><code>--seed</code></td>
-<td class="org-right">None</td>
-<td class="org-left">Random seed</td>
-</tr>
-
-<tr>
-<td class="org-left"><code>--output_dir</code></td>
-<td class="org-right">.</td>
-<td class="org-left">Output directory</td>
-</tr>
-
-<tr>
-<td class="org-left"><code>--checkpoint</code></td>
-<td class="org-right">None</td>
-<td class="org-left">Resume from checkpoint</td>
-</tr>
-
-<tr>
-<td class="org-left"><code>--save_checkpoint_every</code></td>
-<td class="org-right">0</td>
-<td class="org-left">Save checkpoint every N evaluations</td>
-</tr>
-
-<tr>
-<td class="org-left"><code>--save_every</code></td>
-<td class="org-right">0</td>
-<td class="org-left">Save intermediate results every N</td>
-</tr>
-</tbody>
-</table>
-
-
-<a id="orgde6de4b"></a>
-
-# Evaluate
-
-    python eval.py --model_path ./outputs.json
-
-
-<a id="orgdb2d686"></a>
-
-# License
-
-MIT
-
+[MIT](LICENSE)
