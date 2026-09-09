@@ -52,7 +52,12 @@ setup(
     # -----------------------------------------------------------------------
     # Packages
     # -----------------------------------------------------------------------
-    packages=find_packages(include=["iMCTS", "iMCTS.*", "utils", "utils.*"]),
+    packages=find_packages(include=[
+        "cwsr",
+        "cwsr.*",
+        "utils",
+        "utils.*",
+    ]),
     # -----------------------------------------------------------------------
     # Stand-alone modules (not inside a package directory)
     # -----------------------------------------------------------------------
@@ -74,6 +79,7 @@ setup(
         "console_scripts": [
             "cwsr=run_cwsr:main",
             "cwsr-eval=eval:main",
+            "cwsr-query=cwsr.predict.query:main",
         ],
     },
     # -----------------------------------------------------------------------

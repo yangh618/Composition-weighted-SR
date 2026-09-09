@@ -15,7 +15,7 @@ from typing import Tuple
 
 import numpy as np
 
-from iMCTS import Regressor
+from cwsr import Regressor
 from dataloader import load_matbench, load_matbench_test
 
 
@@ -409,7 +409,7 @@ def main():
     # Handle checkpoint resume
     checkpoint_data = None
     if args.checkpoint and Path(args.checkpoint).exists():
-        from iMCTS.checkpoint import load_checkpoint
+        from cwsr.checkpoint import load_checkpoint
         checkpoint_data = load_checkpoint(args.checkpoint)
         print(f"[Checkpoint] Loaded checkpoint from {args.checkpoint}")
 

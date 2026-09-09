@@ -4,7 +4,7 @@ import nlopt
 from sympy import symbols, diff, lambdify
 import json
 import numba
-from iMCTS.src.utils.reward import sp_module
+from cwsr.reward import sp_module
 from dataloader import load_matbench, load_matbench_test
 import argparse
 import matplotlib.pyplot as plt

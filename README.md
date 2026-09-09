@@ -27,7 +27,7 @@ expressions that map chemical compositions to target properties.
 Write your own script using the `Regressor` class. Here is a minimal example:
 
     import numpy as np
-    from iMCTS import Regressor
+    from cwsr import Regressor
     
     # Your data: compositions (n_samples, 118) and targets (n_samples,)
     x_train = np.load("compositions.npy")

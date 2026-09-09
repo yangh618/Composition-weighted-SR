@@ -4,8 +4,10 @@ import copy
 from typing import List, Tuple, Optional
 import numpy as np
 import multiprocessing as mp
-from iMCTS.src import ExpTree, Exp_Queue, Optimizer
-from iMCTS.gp import GPManager
+from cwsr.exp_tree import ExpTree
+from cwsr.exp_queue import Exp_Queue
+from cwsr.reward import Optimizer
+from cwsr.gp import GPManager
 from collections import deque
 
 class MCTS_Node:

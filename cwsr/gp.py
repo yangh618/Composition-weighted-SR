@@ -2,7 +2,7 @@ from typing import List, Dict, Tuple
 import numpy as np
 import random
 import copy
-from iMCTS.src import ExpTree
+from cwsr.exp_tree import ExpTree
 
 class GPManager:
     def __init__(self, ops: List[str], arity_dict: Dict[str, int], verbose: bool = True):

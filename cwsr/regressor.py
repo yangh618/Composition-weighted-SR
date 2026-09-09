@@ -4,9 +4,10 @@ from sympy import sympify, expand, expand_log
 import time
 import random
 import json
-from iMCTS.mcts import MCTS
-from iMCTS.src import ExpTree, Optimizer
-from iMCTS.gp import GPManager
+from cwsr.mcts import MCTS
+from cwsr.exp_tree import ExpTree
+from cwsr.reward import Optimizer
+from cwsr.gp import GPManager
 import gc
 
 def simplify_expression(exp_str: str, verbose: bool = False) -> str:
@@ -143,7 +144,7 @@ class Regressor:
         with np.errstate(all='ignore'):
             mcts = self._create_mcts()
             if checkpoint is not None:
-                from iMCTS.checkpoint import mcts_from_dict
+                from cwsr.checkpoint import mcts_from_dict
                 mcts_from_dict(checkpoint, mcts)
                 print(f"[Checkpoint] Resumed MCTS from {mcts.count_num} evaluations")
             self.start_time = time.time()
@@ -283,7 +284,7 @@ class Regressor:
         """Save full MCTS checkpoint to a JSON file if save_checkpoint_every is enabled."""
         if self.save_checkpoint_every <= 0 or not self.output_prefix:
             return
-        from iMCTS.checkpoint import save_checkpoint
+        from cwsr.checkpoint import save_checkpoint
         filename = f"{self.output_prefix}_ckpt_step{mcts.count_num}.json"
         try:
             save_checkpoint(filename, mcts)

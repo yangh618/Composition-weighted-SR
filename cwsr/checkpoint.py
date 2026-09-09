@@ -38,7 +38,7 @@ def _flatten_tree(root_node) -> List[Dict[str, Any]]:
 
 def _rebuild_tree(nodes: List[Dict[str, Any]], mcts_instance):
     """Rebuild an MCTS tree from a flat list of node dicts."""
-    from iMCTS.mcts import MCTS_Node
+    from cwsr.mcts import MCTS_Node
 
     if not nodes:
         return None
