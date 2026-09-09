@@ -122,6 +122,12 @@ tests/           smoke + sanity tests (maintained on the develop branch)
 
 Current release: **v0.1.0** (package `version` and `cwsr.__version__` aligned).
 
+## References
+
+- *Composition-Weighted Symbolic Regression for General-Purpose Property
+  Prediction* — the method implemented by this package. (Add full citation —
+  authors / journal / year — when available.)
+
 ## License
 
 [MIT](LICENSE)
