@@ -1,0 +1,22 @@
+name: docs
+
+# Build the MkDocs site and deploy it to the gh-pages branch on every push
+# to main. Then enable Pages in the repo: Settings > Pages > Deploy from
+# branch 'gh-pages' / root.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install mkdocs mkdocs-material
+      - run: mkdocs gh-deploy --force

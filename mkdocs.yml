@@ -1,0 +1,22 @@
+site_name: CWSR — Composition-weighted Symbolic Regression
+site_description: Symbolic regression mapping chemical compositions to properties.
+# repo_url: https://github.com/<user>/<repo>   # optional; uncomment + set for an edit link
+theme:
+  name: material
+  palette:
+    scheme: default
+  features:
+    - navigation.instant
+    - navigation.top
+    - search.suggest
+markdown_extensions:
+  - admonition
+  - tables
+  - fenced_code
+  - pymdownx.highlight
+  - pymdownx.superfences
+nav:
+  - Home: index.md
+  - Tutorial: tutorial.md
+  - API Reference: reference.md
+  - Design & Roadmap: design.md
