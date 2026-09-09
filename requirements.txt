@@ -1,9 +1,25 @@
+# Core runtime dependencies for CWSR symbolic regression.
+#
+# These are the third-party packages directly imported by the codebase and are
+# version-pinned to the reference environment (Python 3.11, conda-forge).
+#
+# Intentionally NOT listed here:
+#   - pandas, scikit-learn, PyYAML  -> not imported directly; pulled in as
+#     transitive dependencies of pymatgen / matplotlib where needed.
+#   - matbench (and its legacy pins) -> only used by the optional matbench
+#     data-loading path (dataloader.py / run_cwsr.py). pip's last matbench
+#     release (0.6) hard-pins scikit-learn==1.0.1 / scipy==1.7.3, which cannot
+#     coexist with the modern numpy / pymatgen stack, so it is kept out of the
+#     core environment.
+#
+# Keep alphabetized for readability.
+ase==3.26.0
+matplotlib==3.10.8
+memory_profiler==0.61.0
+nlopt==2.9.1
 numba==0.61.2
 numpy==2.2.0
-pandas==2.3.0
-PyYAML==6.0.1
-scikit_learn==1.8.0
-nlopt==2.9.1
+pymatgen==2025.10.7
 sortedcontainers==2.4.0
 sympy==1.12
-tqdm==4.65.0
+tqdm==4.67.1
