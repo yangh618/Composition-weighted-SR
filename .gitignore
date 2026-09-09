@@ -33,3 +33,16 @@ examples
 *pdf
 *png
 *eps
+
+# python bytecode / caches
+__pycache__/
+*.py[cod]
+*.nbi
+
+# build & packaging metadata
+*.egg-info/
+build/
+dist/
+
+# runtime caches
+joblib_cache/

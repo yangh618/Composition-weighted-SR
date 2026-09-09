@@ -1,3 +1,0 @@
-[console_scripts]
-cwsr = run_cwsr:main
-cwsr-eval = eval:main
