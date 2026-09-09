@@ -49,8 +49,8 @@ print(list_datasets()[:5])   # e.g. ['alloy_density', 'alloy_ductility', ..., 'm
 
 ## 2. Loading data
 
-All data — regardless of source — is exposed as a
-[`CompositionDataset`](cwsr/datasets/base.py) with `.compositions` (n,118),
+All data — regardless of source — is exposed as a `CompositionDataset` (see
+[API Reference §3](reference.md)) with `.compositions` (n,118),
 `.targets` (n,), `.formulas`, `.target_name`, `.source` and `.meta`.
 
 ### (a) Bundled alloy databases
