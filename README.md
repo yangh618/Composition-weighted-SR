@@ -6,9 +6,6 @@ CWSR discovers compact, interpretable analytical expressions that map
 code runs on Matbench benchmarks, alloy databases, or your own composition
 datasets.
 
-> The engine in this package was originally built on iMCTS but has been heavily
-> reworked and flattened into `cwsr`; all imports use `cwsr.*`.
-
 ## Model form
 
 Each sample is a 118-dim atomic-fraction composition vector `comp`. A learned

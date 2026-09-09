@@ -19,8 +19,8 @@ Legend: ☑ already verified in this workspace (re-run on a fresh clone);
       `__pycache__/`, `build/`, `dist/`) — covered by `.gitignore`.
 
 ## 1. Import & reference hygiene
-- [ ] No stale `iMCTS` module references remain in code:
-      `grep -rni 'imcts' --include='*.py' .` (docs may mention history only).
+- [ ] No leftover references to the removed legacy engine package remain in code
+      (all imports use `cwsr.*`).
 - [ ] `grep -rn 'home/huangyang'` → remove any personal/machine-specific paths
       from code and docs (e.g. Alloys-SR sibling path, conda prefix).
 - [ ] Every symbol documented in `docs/reference.md` imports:

@@ -1,4 +1,4 @@
-# Conda environment for CWSR / iMCTS symbolic regression.
+# Conda environment for CWSR symbolic regression.
 #
 # Portable recipe (conda-forge) for the `cwsr` environment. Dependency
 # versions are defined in the single source of truth, requirements.txt, which
