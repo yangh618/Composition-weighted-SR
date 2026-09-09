@@ -2,8 +2,8 @@
 
 Complete reference for the public Python APIs of the `cwsr` package: dataset
 layer, training, prediction, formula helpers, the CLI, and the search-engine
-classes. Pair with `TUTORIAL.md` (worked examples) and `DESIGN.md`
-(architecture/roadmap).
+classes. Pair with the [tutorial](tutorial.md) (worked examples) and the
+[design](design.md) notes (architecture/roadmap).
 
 Assumes Python ≥ 3.10 with the project installed (`pip install -e .`) and the
 `cwsr` environment active.
@@ -12,19 +12,18 @@ Assumes Python ≥ 3.10 with the project installed (`pip install -e .`) and the
 
 ## 0. Package layout & import map
 
-The engine was originally built on iMCTS and has been flattened into `cwsr`;
-all imports now use `cwsr.*`.
+All public modules live under `cwsr`. The search engine is a flat set of
+modules in the package root:
 
-| Old (iMCTS) | Now |
+| Engine module | Exposes |
 |---|---|
-| `iMCTS.Regressor` | `cwsr.Regressor` |
-| `iMCTS.regressor` | `cwsr.regressor` |
-| `iMCTS.mcts` (MCTS, MCTS_Node) | `cwsr.mcts` |
-| `iMCTS.gp` (GPManager) | `cwsr.gp` |
-| `iMCTS.src.exp_tree` (ExpTree) | `cwsr.exp_tree` |
-| `iMCTS.src.utils.exp_queue` (Exp_Queue) | `cwsr.exp_queue` |
-| `iMCTS.src.utils.reward` (Optimizer, sp_module) | `cwsr.reward` |
-| `iMCTS.checkpoint` | `cwsr.checkpoint` |
+| `cwsr.regressor` | `Regressor`, `simplify_expression` |
+| `cwsr.mcts` | `MCTS`, `MCTS_Node` |
+| `cwsr.gp` | `GPManager` |
+| `cwsr.exp_tree` | `ExpTree`, `ExpTreeBase` |
+| `cwsr.exp_queue` | `Exp_Queue`, `Queue_Base` |
+| `cwsr.reward` | `Optimizer`, `sp_module`, `Heaviside_vec` |
+| `cwsr.checkpoint` | `save_checkpoint`, `load_checkpoint`, `mcts_to_dict`, … |
 
 Framework subpackages: `cwsr.formula`, `cwsr.datasets` (`base`, `matbench`,
 `alloy`, `registry`), `cwsr.model`, `cwsr.predict` (`forward`, `query`).

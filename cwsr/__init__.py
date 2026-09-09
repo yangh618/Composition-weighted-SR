@@ -1,7 +1,7 @@
 """Composition-weighted Symbolic Regression (CWSR) — unified engine + framework.
 
-The ``cwsr`` package bundles the CWSR symbolic-regression *engine* (originally
-built on iMCTS but since heavily reworked and flattened here) together with a
+The ``cwsr`` package bundles the CWSR symbolic-regression *engine* — an
+MCTS-driven search core — together with a
 task-agnostic framework for training, evaluation, querying, inverse design,
 Pareto optimisation and bootstrap UQ over any composition -> property dataset.
 
