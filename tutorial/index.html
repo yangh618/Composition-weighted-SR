@@ -1,0 +1,1133 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Symbolic regression mapping chemical compositions to properties.">
+      
+      
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Tutorial - CWSR — Composition-weighted Symbolic Regression</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#cwsr-user-tutorial" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="CWSR — Composition-weighted Symbolic Regression" class="md-header__button md-logo" aria-label="CWSR — Composition-weighted Symbolic Regression" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            CWSR — Composition-weighted Symbolic Regression
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tutorial
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="CWSR — Composition-weighted Symbolic Regression" class="md-nav__button md-logo" aria-label="CWSR — Composition-weighted Symbolic Regression" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    CWSR — Composition-weighted Symbolic Regression
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-concepts-read-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Concepts (read this first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-loading-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Loading data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Loading data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-bundled-alloy-databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) Bundled alloy databases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-matbench-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) Matbench tasks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-your-own-npz-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (c) Your own .npz dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trainvalid-splitting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Train/valid splitting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-training" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Training
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Training">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-high-level-driver-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) High-level driver (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-low-level-engine-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) Low-level engine API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-understanding-the-output-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (c) Understanding the output JSON
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-using-a-trained-model-prediction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Using a trained model (prediction)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Using a trained model (prediction)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-in-python-vectorized-forward-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) In Python — vectorized forward pass
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-formula-value-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) Formula → value (query)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-analytic-gradients-for-designoptimisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (c) Analytic gradients (for design/optimisation)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-adding-a-new-composition-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Adding a new composition dataset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-quick-sanity-short-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Quick sanity / short runs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-practical-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Practical tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../design/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design & Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-concepts-read-this-first" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Concepts (read this first)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-loading-data" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. Loading data
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. Loading data">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-bundled-alloy-databases" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) Bundled alloy databases
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-matbench-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) Matbench tasks
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-your-own-npz-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (c) Your own .npz dataset
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trainvalid-splitting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Train/valid splitting
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-training" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. Training
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. Training">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-high-level-driver-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) High-level driver (recommended)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-low-level-engine-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) Low-level engine API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-understanding-the-output-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (c) Understanding the output JSON
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-using-a-trained-model-prediction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. Using a trained model (prediction)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. Using a trained model (prediction)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#a-in-python-vectorized-forward-pass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (a) In Python — vectorized forward pass
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#b-formula-value-query" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (b) Formula → value (query)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#c-analytic-gradients-for-designoptimisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        (c) Analytic gradients (for design/optimisation)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-adding-a-new-composition-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Adding a new composition dataset
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-quick-sanity-short-runs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Quick sanity / short runs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-practical-tips" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Practical tips
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Roadmap
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="cwsr-user-tutorial">CWSR — User Tutorial</h1>
+<p>Composition-weighted Symbolic Regression (CWSR) discovers compact, interpretable
+analytical expressions that map <strong>chemical composition → a target property</strong>,
+using a Monte-Carlo-Tree-Search (MCTS) driven search. Everything lives in the
+<code>cwsr</code> package and is <strong>task-agnostic</strong>: the same code runs on Matbench tasks,
+alloy databases, or your own composition dataset.</p>
+<p>This tutorial assumes Python ≥ 3.10 inside the <code>cwsr</code> conda environment.</p>
+<hr />
+<h2 id="1-concepts-read-this-first">1. Concepts (read this first)</h2>
+<p>Every sample is a <strong>composition vector</strong> of length 118, one column per element
+(atomic fractions, ordered by atomic number H..Og, summing to 1). The learned
+model has the form</p>
+<div class="highlight"><pre><span></span><code>y = f(W @ comp)
+</code></pre></div>
+<ul>
+<li><code>comp</code> : (118,) composition vector</li>
+<li><code>W</code>    : (var_count, 118) tabulated per-element weights found by the search</li>
+<li><code>f</code>    : a symbolic expression in <code>var_count</code> latent variables <code>x0 ... x_{v-1}</code>,
+           e.g. <code>x0 + 3.78*x1 - x2 + 1.04</code></li>
+</ul>
+<p>Training returns a ranked list of candidate expressions with their optimized
+<code>W</code> weights and train/valid metrics (MAE, reward).</p>
+<p>Key modules:</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cwsr.Regressor</code></td>
+<td>The search engine (fit an expression to data)</td>
+</tr>
+<tr>
+<td><code>cwsr.datasets</code></td>
+<td>Task-agnostic dataset loading + splits</td>
+</tr>
+<tr>
+<td><code>cwsr.model</code></td>
+<td>High-level <code>fit_dataset</code> / <code>train</code> drivers</td>
+</tr>
+<tr>
+<td><code>cwsr.predict</code></td>
+<td>Forward evaluation, analytic gradients, formula query</td>
+</tr>
+<tr>
+<td><code>cwsr.formula</code></td>
+<td>formula ↔ composition helpers</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">cwsr</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr</span><span class="w"> </span><span class="kn">import</span> <span class="n">Regressor</span><span class="p">,</span> <span class="n">simplify_expression</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_dataset</span><span class="p">,</span> <span class="n">list_datasets</span><span class="p">,</span> <span class="n">CompositionDataset</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">list_datasets</span><span class="p">()[:</span><span class="mi">5</span><span class="p">])</span>   <span class="c1"># e.g. ['alloy_density', 'alloy_ductility', ..., 'matbench_glass', ...]</span>
+</code></pre></div>
+<hr />
+<h2 id="2-loading-data">2. Loading data</h2>
+<p>All data — regardless of source — is exposed as a <code>CompositionDataset</code> (see
+<a href="../reference/">API Reference §3</a>) with <code>.compositions</code> (n,118),
+<code>.targets</code> (n,), <code>.formulas</code>, <code>.target_name</code>, <code>.source</code> and <code>.meta</code>.</p>
+<h3 id="a-bundled-alloy-databases">(a) Bundled alloy databases</h3>
+<p>The alloy databases ship inside the example
+(<code>examples/alloys/data/*.npz</code>), so no download is needed:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_dataset</span>
+
+<span class="n">ds</span> <span class="o">=</span> <span class="n">get_dataset</span><span class="p">(</span><span class="s2">"alloy_density"</span><span class="p">,</span> <span class="n">data_dir</span><span class="o">=</span><span class="s2">"examples/alloys/data"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ds</span><span class="p">)</span>                      <span class="c1"># density: 470 samples</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">target_name</span><span class="p">)</span>          <span class="c1"># 'Density (g/cm^3)'</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">compositions</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>   <span class="c1"># (470, 118)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">compositions</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span><span class="c1"># 1.0  (atomic fractions)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">formulas</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>         <span class="c1"># ['Al0.1CoCrFeNi', 'Al0.25CoFeNi', ...]</span>
+</code></pre></div>
+<h3 id="b-matbench-tasks">(b) Matbench tasks</h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># First call downloads/caches the task (and asks before downloading).</span>
+<span class="n">ds</span> <span class="o">=</span> <span class="n">get_dataset</span><span class="p">(</span><span class="s2">"matbench_glass"</span><span class="p">,</span> <span class="n">fold</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>     <span class="c1"># small task, good for testing</span>
+<span class="c1"># Larger examples: "matbench_dielectric", "matbench_expt_gap", ...</span>
+</code></pre></div>
+<h3 id="c-your-own-npz-dataset">(c) Your own .npz dataset</h3>
+<p>Any file with keys <code>targets</code>, <code>formulas</code>, <code>target_name</code>, <code>source</code> loads the
+same way — just pass the path:</p>
+<div class="highlight"><pre><span></span><code><span class="n">ds</span> <span class="o">=</span> <span class="n">get_dataset</span><span class="p">(</span><span class="s2">"my_data.npz"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="trainvalid-splitting">Train/valid splitting</h3>
+<p>The framework always keeps <strong>every chemical element present in the data in the
+training split</strong> (needed because CWSR learns per-element weights):</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.datasets.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">split_dataset</span>
+<span class="n">train_idx</span><span class="p">,</span> <span class="n">valid_idx</span> <span class="o">=</span> <span class="n">split_dataset</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">compositions</span><span class="p">,</span> <span class="n">ds</span><span class="o">.</span><span class="n">targets</span><span class="p">,</span>
+                                     <span class="n">ratio</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+</code></pre></div>
+<hr />
+<h2 id="3-training">3. Training</h2>
+<h3 id="a-high-level-driver-recommended">(a) High-level driver (recommended)</h3>
+<p><code>cwsr.model.fit_dataset</code> splits, fits, and writes <code>cwsr_outputs_&lt;name&gt;_&lt;ts&gt;.json</code>
+under an output directory, returning the ranked outputs list.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_dataset</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.model</span><span class="w"> </span><span class="kn">import</span> <span class="n">fit_dataset</span>
+
+<span class="n">ds</span> <span class="o">=</span> <span class="n">get_dataset</span><span class="p">(</span><span class="s2">"alloy_density"</span><span class="p">,</span> <span class="n">data_dir</span><span class="o">=</span><span class="s2">"examples/alloys/data"</span><span class="p">)</span>
+
+<span class="n">outputs</span> <span class="o">=</span> <span class="n">fit_dataset</span><span class="p">(</span>
+    <span class="n">ds</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="o">=</span><span class="s2">"results/density"</span><span class="p">,</span>
+    <span class="n">var_count</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>          <span class="c1"># latent variables (keep small)</span>
+    <span class="n">ops</span><span class="o">=</span><span class="p">[</span><span class="s2">"mul"</span><span class="p">,</span> <span class="s2">"add"</span><span class="p">,</span> <span class="s2">"sub"</span><span class="p">,</span> <span class="s2">"R"</span><span class="p">],</span>   <span class="c1"># allow multiplication, +, -, constants</span>
+    <span class="n">max_depth</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+    <span class="n">max_expressions</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span>  <span class="c1"># search budget (larger -&gt; better, slower)</span>
+    <span class="n">num_parallel</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+    <span class="n">num_batches</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+    <span class="n">K</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="b-low-level-engine-api">(b) Low-level engine API</h3>
+<p>For full control use <code>cwsr.Regressor</code> directly. <code>fit</code> returns
+<code>(simplified_expr, raw_expr, n_evaluations, path, outputs)</code>; the best trained
+model is <code>outputs[0]</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr</span><span class="w"> </span><span class="kn">import</span> <span class="n">Regressor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.datasets.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">split_dataset</span>
+
+<span class="n">X</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">compositions</span><span class="p">,</span> <span class="n">ds</span><span class="o">.</span><span class="n">targets</span>
+<span class="n">tr</span><span class="p">,</span> <span class="n">va</span> <span class="o">=</span> <span class="n">split_dataset</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">ratio</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">Regressor</span><span class="p">(</span>
+    <span class="n">x_train</span><span class="o">=</span><span class="n">X</span><span class="p">[</span><span class="n">tr</span><span class="p">],</span> <span class="n">y_train</span><span class="o">=</span><span class="n">y</span><span class="p">[</span><span class="n">tr</span><span class="p">],</span>
+    <span class="n">x_valid</span><span class="o">=</span><span class="n">X</span><span class="p">[</span><span class="n">va</span><span class="p">],</span> <span class="n">y_valid</span><span class="o">=</span><span class="n">y</span><span class="p">[</span><span class="n">va</span><span class="p">],</span>
+    <span class="n">var_count</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+    <span class="n">ops</span><span class="o">=</span><span class="p">[</span><span class="s2">"mul"</span><span class="p">,</span> <span class="s2">"add"</span><span class="p">,</span> <span class="s2">"sub"</span><span class="p">,</span> <span class="s2">"R"</span><span class="p">],</span>
+    <span class="n">max_depth</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">max_expressions</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span>
+    <span class="n">num_parallel</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">num_batches</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">simplified</span><span class="p">,</span> <span class="n">raw</span><span class="p">,</span> <span class="n">n_evals</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+
+<span class="n">best</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"best expression :"</span><span class="p">,</span> <span class="n">best</span><span class="p">[</span><span class="s2">"expression"</span><span class="p">])</span>   <span class="c1"># e.g. '0.31*x0 + 1.04*x2'</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"train MAE       :"</span><span class="p">,</span> <span class="n">best</span><span class="p">[</span><span class="s2">"mae"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"valid MAE       :"</span><span class="p">,</span> <span class="n">best</span><span class="p">[</span><span class="s2">"mae_valid"</span><span class="p">])</span>
+<span class="n">W</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">best</span><span class="p">[</span><span class="s2">"weights"</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>      <span class="c1"># (var_count, 118)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"weights shape   :"</span><span class="p">,</span> <span class="n">W</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="c-understanding-the-output-json">(c) Understanding the output JSON</h3>
+<p>Each element of <code>outputs</code> is a dict:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"expression"</span><span class="p">:</span><span class="w">    </span><span class="s2">"0.31*x0 + 1.04*x2"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"weights"</span><span class="p">:</span><span class="w">       </span><span class="p">[[</span><span class="mf">0.12</span><span class="p">,</span><span class="w"> </span><span class="err">...</span><span class="mi">118</span><span class="w"> </span><span class="err">cols...</span><span class="p">],</span><span class="w"> </span><span class="err">...</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"train_reward"</span><span class="p">:</span><span class="w">  </span><span class="mf">0.61</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"valid_reward"</span><span class="p">:</span><span class="w">  </span><span class="mf">0.62</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"mae"</span><span class="p">:</span><span class="w">           </span><span class="mf">0.96</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"mae_valid"</span><span class="p">:</span><span class="w">     </span><span class="mf">0.93</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"rank"</span><span class="p">:</span><span class="w">          </span><span class="mi">1</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>These files are what the query / eval / bootstrap tooling consume.</p>
+<hr />
+<h2 id="4-using-a-trained-model-prediction">4. Using a trained model (prediction)</h2>
+<h3 id="a-in-python-vectorized-forward-pass">(a) In Python — vectorized forward pass</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.predict</span><span class="w"> </span><span class="kn">import</span> <span class="n">compile_expression</span><span class="p">,</span> <span class="n">predict_vector</span>
+
+<span class="n">best</span> <span class="o">=</span> <span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">f</span> <span class="o">=</span> <span class="n">compile_expression</span><span class="p">(</span><span class="n">best</span><span class="p">[</span><span class="s2">"expression"</span><span class="p">],</span> <span class="n">var_count</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">W</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">best</span><span class="p">[</span><span class="s2">"weights"</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+<span class="n">yhat</span> <span class="o">=</span> <span class="n">predict_vector</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">compositions</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>      <span class="c1"># (n,) predictions</span>
+</code></pre></div>
+<h3 id="b-formula-value-query">(b) Formula → value (query)</h3>
+<p><code>query</code> predicts a property for one chemical formula from a <strong>refined-results
+JSON file</strong> (a list whose first element has <code>expression</code> and <code>weights</code>).
+<code>outputs</code> from training already has exactly that shape, so save the best as a
+refined-results file and query:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">outputs</span><span class="p">,</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"results/density/refined_results_density.json"</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">))</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.predict.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">predict</span> <span class="k">as</span> <span class="n">query_predict</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">query_predict</span><span class="p">(</span><span class="s2">"results/density/refined_results_density.json"</span><span class="p">,</span> <span class="s2">"Al0.25CoCrFeNi"</span><span class="p">))</span>
+</code></pre></div>
+<p>or from the command line:</p>
+<div class="highlight"><pre><span></span><code>python<span class="w"> </span>-m<span class="w"> </span>cwsr.predict.query<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--results<span class="w"> </span>results/density/refined_results_density.json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="s2">"Al0.25CoCrFeNi"</span>
+</code></pre></div>
+<h3 id="c-analytic-gradients-for-designoptimisation">(c) Analytic gradients (for design/optimisation)</h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.predict</span><span class="w"> </span><span class="kn">import</span> <span class="n">compile_expression</span><span class="p">,</span> <span class="n">compile_gradient_functions</span><span class="p">,</span> <span class="n">predict_and_gradient</span>
+
+<span class="n">grads</span> <span class="o">=</span> <span class="n">compile_gradient_functions</span><span class="p">(</span><span class="n">best</span><span class="p">[</span><span class="s2">"expression"</span><span class="p">],</span> <span class="n">var_count</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">val</span><span class="p">,</span> <span class="n">grad</span> <span class="o">=</span> <span class="n">predict_and_gradient</span><span class="p">(</span><span class="n">ds</span><span class="o">.</span><span class="n">compositions</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">W</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">grads</span><span class="p">)</span>
+<span class="c1"># grad: (118,) derivative of the prediction w.r.t. each element's fraction</span>
+</code></pre></div>
+<hr />
+<h2 id="5-adding-a-new-composition-dataset">5. Adding a new composition dataset</h2>
+<p>Define a provider that returns a <code>CompositionDataset</code> and register it. Then it
+is usable by every downstream tool with <code>get_dataset("&lt;name&gt;")</code>.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.datasets.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompositionDataset</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cwsr.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">register_provider</span><span class="p">,</span> <span class="n">get_dataset</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">my_provider</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+    <span class="c1"># ... build X (n,118) and y (n,) from whatever source you like ...</span>
+    <span class="k">return</span> <span class="n">CompositionDataset</span><span class="p">(</span>
+        <span class="n">name</span><span class="o">=</span><span class="s2">"my_"</span> <span class="o">+</span> <span class="n">task</span><span class="p">,</span>
+        <span class="n">compositions</span><span class="o">=</span><span class="n">X</span><span class="p">,</span> <span class="n">targets</span><span class="o">=</span><span class="n">y</span><span class="p">,</span>
+        <span class="n">target_name</span><span class="o">=</span><span class="s2">"my property"</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="s2">"my source"</span><span class="p">,</span>
+    <span class="p">)</span>
+
+<span class="n">register_provider</span><span class="p">(</span><span class="s2">"my_"</span><span class="p">,</span> <span class="n">my_provider</span><span class="p">)</span>      <span class="c1"># name-prefix style, or full names</span>
+</code></pre></div>
+<p>A <code>.npz</code> with the standard keys works out of the box (see §2c).</p>
+<hr />
+<h2 id="6-quick-sanity-short-runs">6. Quick sanity / short runs</h2>
+<p>Use the included short smoke tests to confirm the whole stack works fast:</p>
+<div class="highlight"><pre><span></span><code>conda<span class="w"> </span>activate<span class="w"> </span>cwsr
+./tests/run_short.sh<span class="w">                          </span><span class="c1"># alloy + matbench, ~30 s</span>
+python<span class="w"> </span>tests/smoke_alloy.py<span class="w">    </span>--property<span class="w"> </span>density<span class="w"> </span>--max-samples<span class="w"> </span><span class="m">150</span><span class="w"> </span>--max-expressions<span class="w"> </span><span class="m">80</span>
+python<span class="w"> </span>tests/smoke_matbench.py<span class="w"> </span>--task<span class="w"> </span>matbench_glass<span class="w"> </span>--max-samples<span class="w"> </span><span class="m">150</span><span class="w"> </span>--max-expressions<span class="w"> </span><span class="m">80</span>
+</code></pre></div>
+<hr />
+<h2 id="7-practical-tips">7. Practical tips</h2>
+<ul>
+<li><strong><code>var_count</code></strong> is the number of latent variables; 3–4 is a good default.
+  Larger values make expressions/weights heavier.</li>
+<li><strong><code>max_expressions</code></strong> is the search budget — the single biggest
+  runtime/quality knob. Use ~200–300 for exploration, thousands for final runs.</li>
+<li><strong><code>ops</code></strong> controls allowed operators. Minimal sets (<code>mul add sub R</code>) are much
+  faster than transcendental ones (<code>exp log sqrt tanh ...</code>).</li>
+<li>Restrict <code>ops</code> / lower <code>max_depth</code> when you only need a rough model; expand
+  for accuracy.</li>
+<li>The verbose training log prints a live "best expression / MAE" report; look
+  at <code>outputs[0]</code> for the final champion with its optimized <code>W</code>.</li>
+</ul>
+<h2 id="8-roadmap">8. Roadmap</h2>
+<p>Inverse design, Pareto-front optimisation, bootstrap UQ and the plotting suite
+are implemented in the reference <code>Alloys-SR</code> project and are being ported into
+<code>cwsr</code> (<code>cwsr/design</code>, <code>cwsr/validate</code>, <code>cwsr/plotting</code>) per <code>DESIGN.md</code>; the
+public dataset/train/predict API above is stable and already covers the core
+end-to-end workflow.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.top", "search.suggest"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
