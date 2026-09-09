@@ -124,9 +124,21 @@ Current release: **v0.1.0** (package `version` and `cwsr.__version__` aligned).
 
 ## References
 
-- *Composition-Weighted Symbolic Regression for General-Purpose Property
-  Prediction* — the method implemented by this package. (Add full citation —
-  authors / journal / year — when available.)
+- Y. Huang and J. Chen, *Composition-Weighted Symbolic Regression for
+  General-Purpose Property Prediction*, arXiv:2605.02267 (2026).
+  <https://arxiv.org/abs/2605.02267>
+
+```bibtex
+@misc{huang2026compositionweighted,
+  title        = {Composition-Weighted Symbolic Regression for General-Purpose
+                  Property Prediction},
+  author       = {Huang, Yang and Chen, Jingrun},
+  year         = {2026},
+  eprint       = {2605.02267},
+  archivePrefix= {arXiv},
+  primaryClass = {cond-mat.mtrl-sci}
+}
+```
 
 ## License
 
