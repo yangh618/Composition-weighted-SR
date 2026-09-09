@@ -74,14 +74,19 @@ def matbench_is_cached(task: str) -> Optional[bool]:
 def confirm_matbench_download(task: str,
                               assume_yes: bool = False,
                               assume_no: bool = False) -> bool:
-    """Ask the user before downloading a Matbench task that isn't cached."""
-    if assume_no:
-        return False
+    """Ask the user before downloading a Matbench task that isn't cached.
+
+    Returns ``True`` if the task is already cached (never forces a download
+    refusal for cached data), otherwise honours ``assume_yes``/``assume_no``
+    or prompts interactively.
+    """
     cached = matbench_is_cached(task)
     if cached:
         return True
     if assume_yes:
         return True
+    if assume_no:
+        return False
 
     size = MATBENCH_APPROX_MB.get(task)
     size_txt = f" (~{size} MB)" if size is not None else ""
