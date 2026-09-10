@@ -22,11 +22,6 @@ cwsr/                  unified package: flattened engine + task-agnostic API
   mcts.py / gp.py / checkpoint.py
   exp_tree.py / exp_queue.py / reward.py
   formula.py           composition<->formula helpers (form2comp, symbols, formatting)
-  datasets/
-    base.py            CompositionDataset container + task-agnostic train/valid split
-    matbench.py        Matbench provider
-    alloy.py           alloy .npz provider
-    registry.py        name/path -> provider dispatch ("works for any task")
   model/
     train.py           unified train driver (thin wrapper over cwsr.Regressor)
   evaluate/
@@ -42,6 +37,11 @@ cwsr/                  unified package: flattened engine + task-agnostic API
     bootstrap.py       bootstrap UQ (parallel) + use-bootstrap-best
   plotting/            parity, Pareto, periodic-table, element plots
   cli.py               single `cwsr` CLI (train/eval/query/inverse/pareto/bootstrap)
+datasets/              task-agnostic data layer (separate top-level package)
+  base.py              CompositionDataset container + task-agnostic train/valid split
+  matbench.py          Matbench provider
+  alloy.py             alloy .npz provider
+  registry.py          name/path -> provider dispatch ("works for any task")
 dataloader.py          thin re-export shim (kept for backward compatibility)
 eval.py                thin re-export shim (backward compat)
 run_cwsr.py            thin re-export shim (backward compat)
@@ -69,7 +69,7 @@ class CompositionDataset:
     meta: dict                 # var_count, units, etc.
 ```
 
-`cwsr.datasets.registry.get_dataset(...)` resolves a task name / npz path to a
+`datasets.registry.get_dataset(...)` resolves a task name / npz path to a
 `CompositionDataset`, so adding a new database = adding a provider, no code
 changes downstream.
 

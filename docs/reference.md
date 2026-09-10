@@ -25,7 +25,7 @@ modules in the package root:
 | `cwsr.reward` | `Optimizer`, `sp_module`, `Heaviside_vec` |
 | `cwsr.checkpoint` | `save_checkpoint`, `load_checkpoint`, `mcts_to_dict`, … |
 
-Framework subpackages: `cwsr.formula`, `cwsr.datasets` (`base`, `matbench`,
+Framework subpackages: `cwsr.formula`, `datasets` (`base`, `matbench`,
 `alloy`, `registry`), `cwsr.model`, `cwsr.predict` (`forward`, `query`).
 
 ---
@@ -34,14 +34,15 @@ Framework subpackages: `cwsr.formula`, `cwsr.datasets` (`base`, `matbench`,
 
 ```python
 import cwsr
-from cwsr import Regressor, simplify_expression, datasets
+import datasets
+from cwsr import Regressor, simplify_expression
 ```
 
 Exports
 - `cwsr.Regressor` — search engine (see §6).
 - `cwsr.simplify_expression(exp_str, verbose=False) -> str` — clean/simplify an
   expression string via sympy.
-- `cwsr.datasets` — dataset subpackage (§3).
+- `datasets` — dataset subpackage (§3).
 - `cwsr.__version__` — `"0.1.0"`.
 
 ---
@@ -74,14 +75,14 @@ format_composition(v, top_n=4)           # 'Ni0.25 Cr0.25 Co0.25 Fe0.25'
 
 ---
 
-## 3. `cwsr.datasets` — task-agnostic data layer
+## 3. `datasets` — task-agnostic data layer
 
 ### 3.1 `base`
 
 `CompositionDataset` (dataclass) is the single schema every tool consumes.
 
 ```python
-from cwsr.datasets.base import CompositionDataset
+from datasets.base import CompositionDataset
 ds = CompositionDataset(
     name="alloy_density",
     compositions=X,          # (n, 118) float
@@ -123,7 +124,7 @@ Split helpers
   **kwargs) -> CompositionDataset`.
 
 ```python
-from cwsr.datasets import get_dataset, list_datasets
+from datasets import get_dataset, list_datasets
 
 print(list_datasets())                                   # includes 'alloy_density', 'matbench_glass', ...
 ds_a = get_dataset("alloy_density", data_dir="examples/alloys/data")
@@ -131,8 +132,8 @@ ds_m = get_dataset("matbench_glass", fold=0)             # downloads on first us
 ds_c = get_dataset("my_data.npz")                        # custom npz
 ```
 
-Constants: `cwsr.datasets.matbench.MATBENCH_TASKS` (list of task keys);
-`cwsr.datasets.alloy.DEFAULT_PROPERTIES` (property → npz filename).
+Constants: `datasets.matbench.MATBENCH_TASKS` (list of task keys);
+`datasets.alloy.DEFAULT_PROPERTIES` (property → npz filename).
 
 
 ---
@@ -153,7 +154,7 @@ Constants: `cwsr.datasets.matbench.MATBENCH_TASKS` (list of task keys);
 `num_parallel`, `num_batches`, `K`.
 
 ```python
-from cwsr.datasets import get_dataset
+from datasets import get_dataset
 from cwsr.model import fit_dataset
 
 ds = get_dataset("alloy_density", data_dir="examples/alloys/data")

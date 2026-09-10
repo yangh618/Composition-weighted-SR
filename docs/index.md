@@ -15,7 +15,7 @@ pip install -e .                        # installs cwsr package + CLIs
 ```
 
 ```python
-from cwsr.datasets import get_dataset
+from datasets import get_dataset
 from cwsr.model import fit_dataset
 
 ds = get_dataset("alloy_density", data_dir="examples/alloys/data")

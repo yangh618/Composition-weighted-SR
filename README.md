@@ -23,7 +23,7 @@ y = f(W @ comp)
 
 - **MCTS-driven symbolic regression** engine (`cwsr.Regressor`, `cwsr.mcts`, …)
 - **Task-agnostic datasets**: Matbench, alloy `.npz` databases, or any custom
-  composition dataset via `cwsr.datasets.get_dataset(...)`
+  composition dataset via `datasets.get_dataset(...)`
 - Element-safe train/valid splits (every element in the data stays in training)
 - Forward evaluation + **analytic gradients**, and formula→value query
 - Unified training drivers, CLI entry points, and smoke tests (on `develop`)
@@ -58,7 +58,7 @@ pip install -e .
 Load any dataset by name through the registry, then fit:
 
 ```python
-from cwsr.datasets import get_dataset
+from datasets import get_dataset
 from cwsr.model import fit_dataset
 
 ds = get_dataset("matbench_expt_gap", fold=0)   # or "alloy_density", or a .npz path
@@ -99,7 +99,8 @@ forward/query/gradient helpers, and adding your own datasets.
 
 ```
 cwsr/            engine (regressor, mcts, gp, exp_tree, exp_queue, reward,
-                 checkpoint) + framework (datasets, model, predict, formula)
+                 checkpoint) + framework (model, predict, formula)
+datasets/        task-agnostic data layer (base, matbench, alloy, registry)
 docs/            tutorial.md, reference.md, design.md (+ MkDocs site config)
 mkdocs.yml       documentation site configuration
 dataloader.py    Matbench data loader (legacy top-level)
@@ -113,7 +114,7 @@ tests/           smoke + sanity tests (maintained on the develop branch)
 - Matbench tasks (e.g. `matbench_expt_gap`, `matbench_glass`, …)
 - Alloy databases (`alloy_density`, `alloy_hardness`, …) from `.npz` files
 - Any `.npz` with `targets`, `formulas`, `target_name`, `source` keys, or a
-  custom provider registered via `cwsr.datasets.register_provider`
+  custom provider registered via `datasets.register_provider`
 
 ## Versioning
 

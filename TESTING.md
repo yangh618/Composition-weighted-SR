@@ -94,8 +94,8 @@ PY=/home/huangyang/anaconda3/envs/cwsr/bin/python
 $PY - <<'PY'
 import cwsr
 from cwsr import Regressor, simplify_expression
-from cwsr.datasets import get_dataset, list_datasets, register_provider, CompositionDataset
-from cwsr.datasets.base import split_dataset
+from datasets import get_dataset, list_datasets, register_provider, CompositionDataset
+from datasets.base import split_dataset
 from cwsr.model import train, fit_dataset
 from cwsr.predict import (compile_expression, compile_gradient_functions,
                           predict_vector, predict_and_gradient, jit_compile)

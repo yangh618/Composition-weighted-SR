@@ -2,7 +2,7 @@
 
 Reads the preprocessed ``.npz`` databases (``targets``, ``formulas``,
 ``target_name``, ``source`` keys) used by the alloys example and exposes them
-through the shared :class:`~cwsr.datasets.base.CompositionDataset` schema.
+through the shared :class:`~datasets.base.CompositionDataset` schema.
 Because only the loaders are dataset-specific, any other property/DB stored in
 the same npz layout can be added without touching downstream code.
 """
@@ -14,7 +14,7 @@ from typing import Dict, Optional
 
 import numpy as np
 
-from cwsr.datasets.base import CompositionDataset
+from datasets.base import CompositionDataset
 from cwsr.formula import form2comp
 
 # Default property name -> npz filename mapping (mirrors the alloy databases).

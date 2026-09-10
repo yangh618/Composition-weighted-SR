@@ -1,7 +1,7 @@
 """Matbench dataset provider for the unified framework.
 
 Wraps the Matbench benchmark tasks (composition/property) into
-:class:`~cwsr.datasets.base.CompositionDataset` objects so the same unified
+:class:`~datasets.base.CompositionDataset` objects so the same unified
 training/eval code can run on them. Matbench data is downloaded and cached by
 the `matbench` package itself.
 """
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from cwsr.datasets.base import CompositionDataset
+from datasets.base import CompositionDataset
 
 # Valid Matbench task keys (composition-based).
 MATBENCH_TASKS: List[str] = [

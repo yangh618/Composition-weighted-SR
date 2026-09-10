@@ -1,11 +1,11 @@
 """Dataset containers and task-agnostic helpers for the unified CWSR framework."""
 
-from cwsr.datasets.base import (
+from datasets.base import (
     CompositionDataset,
     split_dataset,
     ensure_train_covers_species,
 )
-from cwsr.datasets.registry import (
+from datasets.registry import (
     get_dataset,
     list_datasets,
     register_provider,

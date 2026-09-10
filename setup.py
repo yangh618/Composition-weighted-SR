@@ -55,6 +55,8 @@ setup(
     packages=find_packages(include=[
         "cwsr",
         "cwsr.*",
+        "datasets",
+        "datasets.*",
         "utils",
         "utils.*",
     ]),

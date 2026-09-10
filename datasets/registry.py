@@ -11,9 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Dict, List
 
-from cwsr.datasets.alloy import DEFAULT_PROPERTIES, load_alloy_dataset
-from cwsr.datasets.base import CompositionDataset
-from cwsr.datasets.matbench import MATBENCH_TASKS, matbench_provider
+from datasets.alloy import DEFAULT_PROPERTIES, load_alloy_dataset
+from datasets.base import CompositionDataset
+from datasets.matbench import MATBENCH_TASKS, matbench_provider
 
 Provider = Callable[..., CompositionDataset]
 
