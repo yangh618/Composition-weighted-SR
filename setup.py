@@ -61,6 +61,12 @@ setup(
         "utils.*",
     ]),
     # -----------------------------------------------------------------------
+    # Bundled databases shipped inside the datasets package
+    # -----------------------------------------------------------------------
+    package_data={
+        "datasets": ["alloys/data/*.npz", "alloys/data/*.md"],
+    },
+    # -----------------------------------------------------------------------
     # Stand-alone modules (not inside a package directory)
     # -----------------------------------------------------------------------
     py_modules=[
@@ -82,6 +88,7 @@ setup(
             "cwsr=run_cwsr:main",
             "cwsr-eval=eval:main",
             "cwsr-query=cwsr.predict.query:main",
+            "cwsr-gallery=cwsr.plotting.gallery:main",
         ],
     },
     # -----------------------------------------------------------------------

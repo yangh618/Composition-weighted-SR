@@ -12,7 +12,7 @@ Legend: ☑ already verified in this workspace (re-run on a fresh clone);
 ## 0. Fresh-environment & install reproducibility
 - [ ] Create env from scratch: `conda env create -f environment.yml` → env named `cwsr`.
 - [ ] `pip install -e .` succeeds; console scripts installed:
-      `command -v cwsr cwsr-eval cwsr-query`.
+      `command -v cwsr cwsr-eval cwsr-query cwsr-gallery`.
 - [ ] On a clean interpreter, `python -c "import cwsr; from cwsr import Regressor"` works
       (no reliance on repo working dir / installed package consistency).
 - [ ] Confirm no build/lint leftovers get re-committed (`*.egg-info/`, numba `*.nbc/*.nbi`,
@@ -95,7 +95,7 @@ $PY - <<'PY'
 import cwsr
 from cwsr import Regressor, simplify_expression
 from datasets import get_dataset, list_datasets, register_provider, CompositionDataset
-from datasets.base import split_dataset
+from cwsr.data import split_dataset
 from cwsr.model import train, fit_dataset
 from cwsr.predict import (compile_expression, compile_gradient_functions,
                           predict_vector, predict_and_gradient, jit_compile)
@@ -107,6 +107,7 @@ from cwsr.exp_tree import ExpTree, ExpTreeBase
 from cwsr.exp_queue import Exp_Queue, Queue_Base
 from cwsr.reward import Optimizer, sp_module, Heaviside_vec
 from cwsr.checkpoint import save_checkpoint, load_checkpoint, mcts_to_dict, mcts_from_dict
+from cwsr.plotting import periodic_table_figure, present_mask, build_gallery, main
 print("ok:", len(list_datasets()), "datasets registered")
 PY
 ```

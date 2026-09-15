@@ -1,6 +1,6 @@
 """Unified training driver.
 
-Runs the CWSR search on any :class:`~datasets.base.CompositionDataset`
+Runs the CWSR search on any :class:`~cwsr.data.CompositionDataset`
 (Matbench, alloy databases, custom .npz) via the shared :class:`cwsr.Regressor`
 engine, saving the same ``cwsr_params_*`` / ``cwsr_outputs_*`` JSON artifacts
 used by the rest of the framework (eval/refinement, query, bootstrap, ...).
@@ -17,7 +17,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from datasets.base import CompositionDataset, split_dataset
+from cwsr.data import CompositionDataset, split_dataset
 
 __all__ = ["train", "fit_dataset"]
 

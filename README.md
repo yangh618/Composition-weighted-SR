@@ -31,6 +31,8 @@ y = f(W @ comp)
 ## Documentation
 
 - **[Tutorial](docs/tutorial.md)** — step-by-step examples
+- **[Results Gallery](docs/gallery.md)** — discovered expressions, parity plots
+  and per-element coefficient maps
 - **[API Reference](docs/reference.md)** — full manual for every public API
 - **[Design & roadmap](docs/design.md)** — architecture and merge plan
 
@@ -99,13 +101,17 @@ forward/query/gradient helpers, and adding your own datasets.
 
 ```
 cwsr/            engine (regressor, mcts, gp, exp_tree, exp_queue, reward,
-                 checkpoint) + framework (model, predict, formula)
-datasets/        task-agnostic data layer (base, matbench, alloy, registry)
-docs/            tutorial.md, reference.md, design.md (+ MkDocs site config)
+                 checkpoint) + framework (data = dataset schema + element-safe
+                 splits; model, predict, formula, plotting)
+datasets/        concrete data providers (matbench, alloy), provider registry,
+                 and the bundled alloy databases (datasets/alloys/data)
+gallery/         results manifest (manifest.json) consumed by cwsr-gallery
+docs/            tutorial.md, reference.md, design.md, gallery.md
+                 (+ MkDocs site config)
 mkdocs.yml       documentation site configuration
 dataloader.py    Matbench data loader (legacy top-level)
 eval.py, run_cwsr.py   Matbench CLI/eval runners (legacy top-level)
-examples/        local examples + alloy databases (not committed)
+examples/        example scripts (not committed)
 tests/           smoke + sanity tests (maintained on the develop branch)
 ```
 

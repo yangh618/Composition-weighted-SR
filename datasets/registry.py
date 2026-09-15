@@ -11,8 +11,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Dict, List
 
-from datasets.alloy import DEFAULT_PROPERTIES, load_alloy_dataset
-from datasets.base import CompositionDataset
+from datasets.alloy import (
+    DEFAULT_DATA_DIR,
+    DEFAULT_PROPERTIES,
+    load_alloy_dataset,
+)
+from cwsr.data import CompositionDataset
 from datasets.matbench import MATBENCH_TASKS, matbench_provider
 
 Provider = Callable[..., CompositionDataset]
@@ -37,7 +41,7 @@ def _auto_register_builtins() -> None:
         register_provider(f"alloy_{prop}", load_alloy_dataset)
 
 
-def get_dataset(name: str, *, data_dir: "str | Path" = "processed_data",
+def get_dataset(name: str, *, data_dir: "str | Path" = DEFAULT_DATA_DIR,
                 **kwargs) -> CompositionDataset:
     """Resolve ``name`` to a :class:`CompositionDataset`.
 
@@ -45,6 +49,9 @@ def get_dataset(name: str, *, data_dir: "str | Path" = "processed_data",
       * a registered task name (``"matbench_expt_gap"``, ``"alloy_density"``);
       * a path to a ``.npz`` file with the standard keys (parsed as an alloy
         database).
+
+    ``data_dir`` is only used by the alloy providers and defaults to the
+    databases bundled with this package (``datasets/alloys/data``).
     """
     _auto_register_builtins()
 

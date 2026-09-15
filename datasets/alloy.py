@@ -1,8 +1,8 @@
-"""Alloy database dataset provider.
+"""Alloy database dataset provider (a concrete, example-backed database).
 
 Reads the preprocessed ``.npz`` databases (``targets``, ``formulas``,
-``target_name``, ``source`` keys) used by the alloys example and exposes them
-through the shared :class:`~datasets.base.CompositionDataset` schema.
+``target_name``, ``source`` keys) that ship in :data:`DEFAULT_DATA_DIR` and
+exposes them through the shared :class:`~cwsr.data.CompositionDataset` schema.
 Because only the loaders are dataset-specific, any other property/DB stored in
 the same npz layout can be added without touching downstream code.
 """
@@ -14,8 +14,13 @@ from typing import Dict, Optional
 
 import numpy as np
 
-from datasets.base import CompositionDataset
+from cwsr.data import CompositionDataset
 from cwsr.formula import form2comp
+
+#: Bundled directory holding the example alloy ``*.npz`` databases
+#: (``datasets/alloys/data``), resolved relative to this file so it works from
+#: any working directory and from an installed package.
+DEFAULT_DATA_DIR: Path = Path(__file__).resolve().parent / "alloys" / "data"
 
 # Default property name -> npz filename mapping (mirrors the alloy databases).
 DEFAULT_PROPERTIES: Dict[str, str] = {
@@ -35,7 +40,7 @@ def _parse_formula_vecs(formulas: np.ndarray) -> np.ndarray:
 
 
 def load_alloy_dataset(property_name: str,
-                       data_dir: "str | Path" = "processed_data",
+                       data_dir: "str | Path" = DEFAULT_DATA_DIR,
                        ) -> CompositionDataset:
     """Load a preprocessed alloy ``.npz`` into a :class:`CompositionDataset`.
 
@@ -45,7 +50,8 @@ def load_alloy_dataset(property_name: str,
         One of :data:`DEFAULT_PROPERTIES` (e.g. ``"density"``), or the path to
         an arbitrary ``.npz`` file with the standard keys.
     data_dir : str | Path
-        Directory containing the preprocessed ``.npz`` files.
+        Directory containing the preprocessed ``.npz`` files (default: the
+        bundled :data:`DEFAULT_DATA_DIR`, ``datasets/alloys/data``).
     """
     data_dir = Path(data_dir)
 

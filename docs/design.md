@@ -22,6 +22,7 @@ cwsr/                  unified package: flattened engine + task-agnostic API
   mcts.py / gp.py / checkpoint.py
   exp_tree.py / exp_queue.py / reward.py
   formula.py           composition<->formula helpers (form2comp, symbols, formatting)
+  data.py              CompositionDataset schema + element-safe train/valid split
   model/
     train.py           unified train driver (thin wrapper over cwsr.Regressor)
   evaluate/
@@ -37,10 +38,10 @@ cwsr/                  unified package: flattened engine + task-agnostic API
     bootstrap.py       bootstrap UQ (parallel) + use-bootstrap-best
   plotting/            parity, Pareto, periodic-table, element plots
   cli.py               single `cwsr` CLI (train/eval/query/inverse/pareto/bootstrap)
-datasets/              task-agnostic data layer (separate top-level package)
-  base.py              CompositionDataset container + task-agnostic train/valid split
+datasets/              concrete databases + dispatch (separate top-level package)
   matbench.py          Matbench provider
-  alloy.py             alloy .npz provider
+  alloy.py             alloy .npz provider (bundled data under alloys/data/)
+  alloys/data/*.npz    bundled example alloy databases (no download needed)
   registry.py          name/path -> provider dispatch ("works for any task")
 dataloader.py          thin re-export shim (kept for backward compatibility)
 eval.py                thin re-export shim (backward compat)
@@ -73,6 +74,9 @@ class CompositionDataset:
 `CompositionDataset`, so adding a new database = adding a provider, no code
 changes downstream.
 
+The generic container itself lives in the framework core (`cwsr/data.py`);
+`datasets/` only holds providers, the registry and the bundled databases.
+
 ## Merge map (Alloys-SR -> cwsr)
 
 | Alloys-SR module | New home | Treatment |
@@ -89,12 +93,12 @@ changes downstream.
 | `preprocess.py`, `verify_data.py` | `examples/alloys/preprocess/` | example-local (data-specific) |
 | `plot_*.py`, `plot_utils.py` | `cwsr/plotting/` | port; examples re-use |
 | shell/slurm drivers | `examples/alloys/` | example-local |
-| datasets & data | `examples/alloys/processed_data`, `experiments/` | example data (git-ignored where appropriate) |
+| datasets & data | `datasets/alloys/data`, `experiments/` | example data (git-ignored where appropriate) |
 
 ## Phased execution (each increment lands as a commit on `develop`)
 
 1. **Phase 1 (done here):** `cwsr/` package skeleton, `formula.py`, dataset
-   layer (`base`, `matbench`, `alloy`, `registry`), `predict/forward.py` +
+   layer (`data`, `matbench`, `alloy`, `registry`), `predict/forward.py` +
    `predict/query.py` (ported), `examples/alloys/` scaffold, `setup.py` +
    console-script wiring, top-level backward-compat shims, this doc. Validated
    with `python -c "import cwsr..."` and `py_compile`.

@@ -18,7 +18,7 @@ pip install -e .                        # installs cwsr package + CLIs
 from datasets import get_dataset
 from cwsr.model import fit_dataset
 
-ds = get_dataset("alloy_density", data_dir="examples/alloys/data")
+ds = get_dataset("alloy_density")     # bundled datasets/alloys/data databases
 outputs = fit_dataset(ds, output_dir="results/density",
                       var_count=3, ops=["mul", "add", "sub", "R"],
                       max_expressions=300, num_parallel=4, seed=42)
@@ -28,6 +28,8 @@ print(outputs[0]["expression"])          # best discovered expression
 ## Documentation
 
 - **[Tutorial](tutorial.md)** — step-by-step, runnable examples.
+- **[Results Gallery](gallery.md)** — discovered expressions, parity plots and
+  per-element coefficient maps for each task.
 - **[API Reference](reference.md)** — full manual for every public API.
 - **[Design & roadmap](design.md)** — architecture and Alloys-SR merge plan.
 
@@ -40,8 +42,10 @@ search and `f` is a symbolic expression in the `var_count` latent variables.
 ## Contents
 
 - `cwsr/` — engine (`regressor`, `mcts`, `gp`, `exp_tree`, `exp_queue`,
-  `reward`, `checkpoint`) and framework (`datasets`, `model`, `predict`,
-  `formula`).
+  `reward`, `checkpoint`) and framework (`data` = `CompositionDataset` schema
+  + element-safe splits, `model`, `predict`, `formula`, `plotting`).
+- `datasets/` — concrete data providers (Matbench, alloy `.npz`), the provider
+  registry, and the bundled alloy databases (`datasets/alloys/data`).
 - `tests/` — short-time smoke tests (alloy + Matbench).
-- `examples/` — local examples (alloy database + data are bundled locally;
-  see `examples/alloys/`).
+- `gallery/` — result manifest + the generated [results gallery](gallery.md).
+- `examples/` — local example scripts (see `examples/alloys/`).

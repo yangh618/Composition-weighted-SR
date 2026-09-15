@@ -4,6 +4,11 @@ A :class:`CompositionDataset` is the single, framework-wide description of any
 composition -> property task. Downstream modules (train, eval, query, inverse,
 Pareto, bootstrap) are written against this schema only, never against a
 specific database layout, which is what makes the framework task-agnostic.
+
+This module is the data *schema*: the container plus element-safe splitting.
+Loading real databases is a separate concern — concrete providers and their
+registry live in the top-level :mod:`datasets` package, which also re-exports
+this module for convenience.
 """
 
 from __future__ import annotations

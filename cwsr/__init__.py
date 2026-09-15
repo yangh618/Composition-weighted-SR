@@ -5,13 +5,16 @@ MCTS-driven search core — together with a
 task-agnostic framework for training, evaluation, querying, inverse design,
 Pareto optimisation and bootstrap UQ over any composition -> property dataset.
 
-The task-agnostic data layer lives in the separate top-level ``datasets``
-package (see ``datasets.get_dataset``).
+The generic dataset schema (:class:`cwsr.data.CompositionDataset` and the
+element-safe :func:`cwsr.data.split_dataset`) lives in the framework core;
+concrete databases and their registry live in the separate top-level
+``datasets`` package (see ``datasets.get_dataset``).
 
 Convenience imports::
 
     from cwsr import Regressor, simplify_expression
-    from datasets import get_dataset, CompositionDataset
+    from cwsr.data import CompositionDataset, split_dataset
+    from datasets import get_dataset
     from cwsr.mcts import MCTS
     from cwsr.exp_tree import ExpTree
     from cwsr.exp_queue import Exp_Queue

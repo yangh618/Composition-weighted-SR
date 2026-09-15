@@ -25,8 +25,10 @@ modules in the package root:
 | `cwsr.reward` | `Optimizer`, `sp_module`, `Heaviside_vec` |
 | `cwsr.checkpoint` | `save_checkpoint`, `load_checkpoint`, `mcts_to_dict`, … |
 
-Framework subpackages: `cwsr.formula`, `datasets` (`base`, `matbench`,
-`alloy`, `registry`), `cwsr.model`, `cwsr.predict` (`forward`, `query`).
+Framework subpackages: `cwsr.formula`, `cwsr.data` (dataset schema + splits),
+`cwsr.model`, `cwsr.predict` (`forward`, `query`), `cwsr.plotting`
+(`periodic_table`, `gallery`), and the top-level `datasets` package
+(`matbench`, `alloy`, `registry`).
 
 ---
 
@@ -42,7 +44,7 @@ Exports
 - `cwsr.Regressor` — search engine (see §6).
 - `cwsr.simplify_expression(exp_str, verbose=False) -> str` — clean/simplify an
   expression string via sympy.
-- `datasets` — dataset subpackage (§3).
+- `datasets` — concrete data providers + registry (§3).
 - `cwsr.__version__` — `"0.1.0"`.
 
 ---
@@ -75,14 +77,16 @@ format_composition(v, top_n=4)           # 'Ni0.25 Cr0.25 Co0.25 Fe0.25'
 
 ---
 
-## 3. `datasets` — task-agnostic data layer
+## 3. Dataset layer: `cwsr.data` + `datasets`
 
-### 3.1 `base`
+### 3.1 `cwsr.data` — the schema
 
-`CompositionDataset` (dataclass) is the single schema every tool consumes.
+`CompositionDataset` (dataclass) is the single schema every tool consumes. It
+is generic, so it lives in the framework core; the `datasets` package
+re-exports it.
 
 ```python
-from datasets.base import CompositionDataset
+from cwsr.data import CompositionDataset    # also: from datasets import CompositionDataset
 ds = CompositionDataset(
     name="alloy_density",
     compositions=X,          # (n, 118) float
@@ -111,13 +115,14 @@ Split helpers
 ### 3.2 Providers + registry (`matbench`, `alloy`, `registry`)
 
 - `list_datasets() -> list[str]` — names currently resolvable.
-- `get_dataset(name, *, data_dir="processed_data", **kwargs)
+- `get_dataset(name, *, data_dir=datasets.alloy.DEFAULT_DATA_DIR, **kwargs)
   -> CompositionDataset`
   - `name` a registered Matbench task (e.g. `"matbench_glass"`) — optionally
     `fold=0`.
   - `name` `"alloy_<property>"` (density, hardness, yield_strength,
     elongation, melting_temperature, ductility, youngs_modulus) — resolved
-    from `data_dir` (`<data_dir>/<property>.npz`).
+    from `data_dir` (`<data_dir>/<property>.npz`); `data_dir` defaults to the
+    bundled `datasets/alloys/data` databases.
   - `name` a path to a `.npz` with keys `targets`, `formulas`,
     `target_name`, `source`.
 - `register_provider(name, provider)` — register `provider(task_or_name,
@@ -127,13 +132,14 @@ Split helpers
 from datasets import get_dataset, list_datasets
 
 print(list_datasets())                                   # includes 'alloy_density', 'matbench_glass', ...
-ds_a = get_dataset("alloy_density", data_dir="examples/alloys/data")
+ds_a = get_dataset("alloy_density")                      # bundled alloy databases
 ds_m = get_dataset("matbench_glass", fold=0)             # downloads on first use (asks first)
 ds_c = get_dataset("my_data.npz")                        # custom npz
 ```
 
 Constants: `datasets.matbench.MATBENCH_TASKS` (list of task keys);
-`datasets.alloy.DEFAULT_PROPERTIES` (property → npz filename).
+`datasets.alloy.DEFAULT_PROPERTIES` (property → npz filename);
+`datasets.alloy.DEFAULT_DATA_DIR` (bundled database directory).
 
 
 ---
@@ -157,7 +163,7 @@ Constants: `datasets.matbench.MATBENCH_TASKS` (list of task keys);
 from datasets import get_dataset
 from cwsr.model import fit_dataset
 
-ds = get_dataset("alloy_density", data_dir="examples/alloys/data")
+ds = get_dataset("alloy_density")
 outputs = fit_dataset(ds, output_dir="results/density",
                       var_count=3, ops=["mul", "add", "sub", "R"],
                       max_depth=5, max_expressions=300,
@@ -385,23 +391,66 @@ state = load_checkpoint("run_ckpt.json")     # {'mcts': {...}, ...}
 
 ---
 
-## 7. Console entry points
+## 7. `cwsr.plotting` — figures & results gallery
+
+Helpers that turn training artifacts into figures and a growing Markdown gallery
+page.
+
+### 7.1 `periodic_table`
+
+```python
+from cwsr.plotting import periodic_table_figure, present_mask
+
+fig = periodic_table_figure(
+    weights,                                # (var_count, 118) from result JSON
+    expression="2*x0 + x1",
+    present=present_mask(ds.compositions),  # grey out absent elements
+    title="Alloy density",
+)
+fig.savefig("pt.png", dpi=200)
+```
+
+One periodic table is drawn per latent variable; red = positive coefficient,
+blue = negative, grey = element absent from the dataset.
+
+### 7.2 `gallery`
+
+```python
+from cwsr.plotting import build_gallery
+build_gallery("gallery/manifest.json", page_path="docs/gallery.md")
+```
+
+Reads a JSON manifest of entries and, per entry, renders a parity plot
+(predicted vs. reference) and a periodic-table coefficient map, then writes the
+Markdown page plus PNGs under `<page_dir>/assets/gallery/`. Add a result by
+appending an entry to the manifest and re-running the command — the page grows
+gradually. CLI: `cwsr-gallery` (see §8).
+
+Manifest entry fields: `id`, `title`, `dataset` (+ `dataset_kwargs`), `results`
+(path to a `cwsr_outputs_*.json`), `rank`, optional `split_ratio`/`seed` (to
+colour train/valid points), `notes`, `tags`.
+
+---
+
+## 8. Console entry points
 
 | Command | Module |
 |---|---|
 | `cwsr` | `run_cwsr` (Matbench CLI runner) |
 | `cwsr-eval` | `eval` |
 | `cwsr-query` | `cwsr.predict.query` |
+| `cwsr-gallery` | `cwsr.plotting.gallery` |
 
 Example:
 
 ```bash
 cwsr-query --results results/refined_results.json "Al0.25CoCrFeNi"
+cwsr-gallery --manifest gallery/manifest.json --page docs/gallery.md
 ```
 
 ---
 
-## 8. Conventions & notes
+## 9. Conventions & notes
 
 - **Shapes**: compositions `(n, 118)`; weights `(var_count, 118)`;
   expression functions accept `(n, var_count) -> (n,)`.
@@ -416,5 +465,5 @@ cwsr-query --results results/refined_results.json "Al0.25CoCrFeNi"
 - Smaller `ops` sets + lower `max_depth` speed up runs dramatically; raise
   `max_expressions` for better final expressions.
 - First use of Matbench tasks downloads/caches data after an interactive
-  confirmation; the alloy databases ship in `examples/alloys/data`.
+  confirmation; the alloy databases ship in `datasets/alloys/data`.
 

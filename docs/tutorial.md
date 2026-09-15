@@ -33,7 +33,8 @@ Key modules:
 | Module | Purpose |
 |---|---|
 | `cwsr.Regressor` | The search engine (fit an expression to data) |
-| `datasets` | Task-agnostic dataset loading + splits |
+| `datasets` | Concrete dataset loading + the provider registry |
+| `cwsr.data` | `CompositionDataset` schema + element-safe train/valid splits |
 | `cwsr.model` | High-level `fit_dataset` / `train` drivers |
 | `cwsr.predict` | Forward evaluation, analytic gradients, formula query |
 | `cwsr.formula` | formula ↔ composition helpers |
@@ -55,13 +56,13 @@ All data — regardless of source — is exposed as a `CompositionDataset` (see
 
 ### (a) Bundled alloy databases
 
-The alloy databases ship inside the example
-(`examples/alloys/data/*.npz`), so no download is needed:
+The alloy databases ship with the `datasets` package
+(`datasets/alloys/data/*.npz`), so no download is needed:
 
 ```python
 from datasets import get_dataset
 
-ds = get_dataset("alloy_density", data_dir="examples/alloys/data")
+ds = get_dataset("alloy_density")   # bundled databases (default data_dir)
 print(ds)                      # density: 470 samples
 print(ds.target_name)          # 'Density (g/cm^3)'
 print(ds.compositions.shape)   # (470, 118)
@@ -92,7 +93,7 @@ The framework always keeps **every chemical element present in the data in the
 training split** (needed because CWSR learns per-element weights):
 
 ```python
-from datasets.base import split_dataset
+from cwsr.data import split_dataset
 train_idx, valid_idx = split_dataset(ds.compositions, ds.targets,
                                      ratio=0.8, seed=42)
 ```
@@ -110,7 +111,7 @@ under an output directory, returning the ranked outputs list.
 from datasets import get_dataset
 from cwsr.model import fit_dataset
 
-ds = get_dataset("alloy_density", data_dir="examples/alloys/data")
+ds = get_dataset("alloy_density")
 
 outputs = fit_dataset(
     ds,
@@ -135,7 +136,7 @@ model is `outputs[0]`.
 ```python
 import numpy as np
 from cwsr import Regressor
-from datasets.base import split_dataset
+from cwsr.data import split_dataset
 
 X, y = ds.compositions, ds.targets
 tr, va = split_dataset(X, y, ratio=0.8, seed=42)
@@ -234,7 +235,7 @@ Define a provider that returns a `CompositionDataset` and register it. Then it
 is usable by every downstream tool with `get_dataset("<name>")`.
 
 ```python
-from datasets.base import CompositionDataset
+from cwsr.data import CompositionDataset
 from datasets import register_provider, get_dataset
 
 def my_provider(task, **kw):
