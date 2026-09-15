@@ -1,8 +1,11 @@
 #!/bin/bash
 
-echo "Running TISR evaluation..."
+# CWSR evaluation/refinement driver (legacy example). Invokes scripts/eval.py
+# next to this file, keeping the caller's cwd.
 
-python eval.py \
+echo "Running CWSR evaluation..."
+
+python "$(dirname "$0")/eval.py" \
        --model_path ./tisr_outputs_matbench_expt_is_metal_fold0_1769506456.json \
        --task matbench_expt_is_metal \
        --fold 0 \
@@ -20,4 +23,4 @@ python eval.py \
        --num_batches 64 \
        --num_trials 4 #2>/tmp/NUL
 
-echo "TISR evaluation completed!"
+echo "CWSR evaluation completed!"

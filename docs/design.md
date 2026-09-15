@@ -39,14 +39,16 @@ cwsr/                  unified package: flattened engine + task-agnostic API
   plotting/            parity, Pareto, periodic-table, element plots
   cli.py               single `cwsr` CLI (train/eval/query/inverse/pareto/bootstrap)
 datasets/              concrete databases + dispatch (separate top-level package)
-  matbench.py          Matbench provider
+  matbench.py          Matbench provider (+ raw load_matbench / load_matbench_test)
   alloy.py             alloy .npz provider (bundled data under alloys/data/)
   alloys/data/*.npz    bundled example alloy databases (no download needed)
   registry.py          name/path -> provider dispatch ("works for any task")
-dataloader.py          thin re-export shim (kept for backward compatibility)
-eval.py                thin re-export shim (backward compat)
-run_cwsr.py            thin re-export shim (backward compat)
-visiualize.py          kept (periodic-table visualiser, expanded later)
+scripts/               legacy command-line executables (examples, not installed)
+  run_cwsr.py          Matbench CLI runner (engine-level, legacy)
+  eval.py              Matbench eval + NLopt weight refinement (legacy)
+  visiualize.py        PeriodicTableVisualizer used by eval.py (legacy)
+  view_out.py          one-off paper plotter (training-log MAE curves)
+  run.sh, eval.sh      thin shell wrappers with example argument sets
 examples/
   matbench/            existing Matbench examples -> driven via cwsr datasets
   alloys/              NEW: alloy database example (uses cwsr unified API)
@@ -89,7 +91,7 @@ The generic container itself lives in the framework core (`cwsr/data.py`);
 | `bootstrap_parity.py` | `cwsr/validate/bootstrap.py` | port, generalize |
 | `use_bootstrap_best.py` | `cwsr/validate/bootstrap.py` | port, generalize |
 | `cwsr_alloys.py` | `examples/alloys/` + `cwsr/model/train.py` | training now task-agnostic; example registers alloy npz |
-| `eval.py` / `visiualize.py` | `cwsr/evaluate/eval.py`, `cwsr/plotting/` | unify; keep top-level shims |
+| `eval.py` / `visiualize.py` | `cwsr/evaluate/`, `cwsr/plotting/` | unify; legacy copies kept as `scripts/` examples |
 | `preprocess.py`, `verify_data.py` | `examples/alloys/preprocess/` | example-local (data-specific) |
 | `plot_*.py`, `plot_utils.py` | `cwsr/plotting/` | port; examples re-use |
 | shell/slurm drivers | `examples/alloys/` | example-local |
@@ -100,7 +102,7 @@ The generic container itself lives in the framework core (`cwsr/data.py`);
 1. **Phase 1 (done here):** `cwsr/` package skeleton, `formula.py`, dataset
    layer (`data`, `matbench`, `alloy`, `registry`), `predict/forward.py` +
    `predict/query.py` (ported), `examples/alloys/` scaffold, `setup.py` +
-   console-script wiring, top-level backward-compat shims, this doc. Validated
+   console-script wiring, this doc. Validated
    with `python -c "import cwsr..."` and `py_compile`.
 2. **Phase 2:** `cwsr/model/train.py` unified training CLI + Matbench/alloy
    runners; reconcile the two `eval.py` forks into `cwsr/evaluate/eval.py`.
@@ -119,5 +121,8 @@ The generic container itself lives in the framework core (`cwsr/data.py`);
   `mcts.py`, `gp.py`, `checkpoint.py`, `exp_tree.py`, `exp_queue.py`,
   `reward.py`). Imports use `cwsr.*` (see the package docstring for the flat
   name mapping).
-- Existing top-level modules (`dataloader`, `eval`, `run_cwsr`,
-  `visiualize`) stay importable as shims so nothing breaks mid-migration.
+- The legacy Matbench runners are plain scripts under `scripts/` (`run_cwsr.py`,
+  `eval.py`, `visiualize.py`) kept as examples of command-line usage — they are
+  not installed entry points. All Matbench loading (including
+  `load_matbench` / `load_matbench_test`) lives in `datasets/matbench.py`, so
+  the repository root holds no standalone Python modules.

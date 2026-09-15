@@ -1,10 +1,12 @@
 #!/bin/bash
 
-# Tabulated Invariant Symbolic Regression (TISR) Runner Script
+# Composition-weighted Symbolic Regression (CWSR) runner script (legacy example).
+# Invokes scripts/run_cwsr.py next to this file, keeping the caller's cwd so
+# relative paths like --output_dir ./test resolve where you started.
 
-echo "Running TISR with all available options..."
+echo "Running CWSR with all available options..."
 
-python run_cwsr.py \
+python "$(dirname "$0")/run_cwsr.py" \
        --task matbench_expt_gap \
        --fold -1 \
        --ops mul sub add div sqrt exp log Max Min Pow R\
@@ -24,4 +26,4 @@ python run_cwsr.py \
        --num_batches 48      \
        --num_trials 2 #2>/tmp/NUL
 
-echo "TISR run completed!"
+echo "CWSR run completed!"

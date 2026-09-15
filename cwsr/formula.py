@@ -2,7 +2,10 @@
 
 These utilities work on normalized 118-dimensional atomic-fraction vectors
 (columns indexed by atomic number, H=0 ... Og=117) and are shared by every
-dataset provider and downstream tool in the framework.
+dataset provider and downstream tool in the framework: :func:`form2comp`
+(formula -> vector, used when loading databases) and
+:func:`composition_to_formula` / :func:`format_composition` (vector -> readable
+formula).
 """
 
 from __future__ import annotations
@@ -28,28 +31,38 @@ ELEMENT_SYMBOLS: List[str] = [
 ]
 
 
-def _atomic_numbers() -> dict:
-    """Lazy atomic-number lookup (imports ase only when needed)."""
-    from ase.data import atomic_numbers
-    return atomic_numbers
-
-
 def form2comp(formula: str) -> np.ndarray:
     """Convert a chemical formula into a normalized 118-dim composition vector.
 
+    This is the canonical formula -> composition converter, used by the dataset
+    providers (``datasets.alloy``, ``datasets.matbench``) and by
+    :mod:`cwsr.predict.query`.
+
+    Parameters
+    ----------
+    formula : str
+        Chemical formula, e.g. ``"FeCrCoNi"`` or ``"Al0.25CoCrFeNi"``.
+
+    Returns
+    -------
+    np.ndarray, shape (118,)
+        Atomic fractions summing to 1, indexed by zero-based atomic number
+        (H=0 ... Og=117).
+
+    Notes
+    -----
     Parsing is delegated to pymatgen so fractional stoichiometries such as
-    ``"Ag0.5Ge1Pb1.75S4"`` are handled robustly. Returns atomic fractions that
-    sum to one, indexed by zero-based atomic number.
+    ``"Ag0.5Ge1Pb1.75S4"`` are handled robustly; ``pymatgen``/``ase`` are
+    imported lazily so importing :mod:`cwsr.formula` stays dependency-light.
     """
+    from ase.data import atomic_numbers
     from pymatgen.core import Composition
 
     comp = Composition(formula)
     vec = np.zeros(118, dtype=np.float64)
-    atomic_numbers = _atomic_numbers()
     for element, amount in comp.get_el_amt_dict().items():
         vec[atomic_numbers[element] - 1] = amount
-    vec = vec / vec.sum()
-    return vec
+    return vec / vec.sum()
 
 
 def composition_to_formula(composition: np.ndarray,
