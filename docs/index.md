@@ -46,6 +46,8 @@ search and `f` is a symbolic expression in the `var_count` latent variables.
   + element-safe splits, `model`, `predict`, `formula`, `plotting`).
 - `datasets/` — concrete data providers (Matbench, alloy `.npz`), the provider
   registry, and the bundled alloy databases (`datasets/alloys/data`).
+- `scripts/` — legacy Matbench CLI/eval runners + shell drivers (runnable
+  examples; see `scripts/README.md`).
 - `tests/` — short-time smoke tests (alloy + Matbench).
 - `gallery/` — result manifest + the generated [results gallery](gallery.md).
 - `examples/` — local example scripts (see `examples/alloys/`).

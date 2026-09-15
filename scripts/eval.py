@@ -1,3 +1,14 @@
+"""Legacy Matbench evaluation + weight refinement (example command-line script).
+
+Loads a ``cwsr_outputs_*.json`` written by ``scripts/run_cwsr.py``, optionally
+re-refines the tabulated weights with NLopt and draws the per-element
+coefficients on a periodic table (``visiualize.py``, next to this script).
+
+Usage (from the repository root, with the package importable)::
+
+    python scripts/eval.py --model_path ./outputs.json --task matbench_expt_gap
+"""
+
 import numpy as np
 from typing import Tuple, Callable
 import nlopt
@@ -5,7 +16,7 @@ from sympy import symbols, diff, lambdify
 import json
 import numba
 from cwsr.reward import sp_module
-from dataloader import load_matbench, load_matbench_test
+from datasets.matbench import load_matbench, load_matbench_test
 import argparse
 import matplotlib.pyplot as plt
 from visiualize import PeriodicTableVisualizer
@@ -13,13 +24,13 @@ from visiualize import PeriodicTableVisualizer
 def create_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
-        description='Run Tabulated Invariant Symbolic Regression (TISR)',
+        description='Evaluate a CWSR run on a Matbench task (legacy example)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_tisr.py
-  python run_tisr.py --task matbench_mp_gap --max_expressions 1000
-  python run_tisr.py --ops mul sub add div sqrt --output_dir ./results
+  python scripts/eval.py
+  python scripts/eval.py --task matbench_mp_gap --max_expressions 1000
+  python scripts/eval.py --ops mul sub add div sqrt --output_dir ./results
         """
     )
 

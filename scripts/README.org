@@ -49,14 +49,14 @@ Write your own script using the =Regressor= class. Here is a minimal example:
   print(f"Best expression: {sym_exp}")
 #+end_src
 
-See =run_cwsr.py= for a complete example using Matbench datasets.
+See =scripts/run_cwsr.py= for a complete example using Matbench datasets.
 
 ** CLI (Matbench example)
 
-The included =run_cwsr.py= demonstrates CWSR on Matbench benchmarks:
+The included =scripts/run_cwsr.py= demonstrates CWSR on Matbench benchmarks:
 
 #+begin_src bash
-  python run_cwsr.py --max_expressions 200
+  python scripts/run_cwsr.py --max_expressions 200
 #+end_src
 
 | Argument               | Default | Description                              |
@@ -83,7 +83,7 @@ The included =run_cwsr.py= demonstrates CWSR on Matbench benchmarks:
 ** Evaluate
 
 #+begin_src bash
-  python eval.py --model_path ./outputs.json
+  python scripts/eval.py --model_path ./outputs.json
 #+end_src
 
 ** License

@@ -109,8 +109,7 @@ gallery/         results manifest (manifest.json) consumed by cwsr-gallery
 docs/            tutorial.md, reference.md, design.md, gallery.md
                  (+ MkDocs site config)
 mkdocs.yml       documentation site configuration
-dataloader.py    Matbench data loader (legacy top-level)
-eval.py, run_cwsr.py   Matbench CLI/eval runners (legacy top-level)
+scripts/         legacy Matbench CLI/eval runners + shell drivers (examples)
 examples/        example scripts (not committed)
 tests/           smoke + sanity tests (maintained on the develop branch)
 ```

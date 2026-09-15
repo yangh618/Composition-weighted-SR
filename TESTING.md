@@ -12,7 +12,7 @@ Legend: ☑ already verified in this workspace (re-run on a fresh clone);
 ## 0. Fresh-environment & install reproducibility
 - [ ] Create env from scratch: `conda env create -f environment.yml` → env named `cwsr`.
 - [ ] `pip install -e .` succeeds; console scripts installed:
-      `command -v cwsr cwsr-eval cwsr-query cwsr-gallery`.
+      `command -v cwsr-query cwsr-gallery`.
 - [ ] On a clean interpreter, `python -c "import cwsr; from cwsr import Regressor"` works
       (no reliance on repo working dir / installed package consistency).
 - [ ] Confirm no build/lint leftovers get re-committed (`*.egg-info/`, numba `*.nbc/*.nbi`,
@@ -55,7 +55,9 @@ Legend: ☑ already verified in this workspace (re-run on a fresh clone);
 ## 4. CLI tests
 - [ ] `cwsr-query --results <refined.json> "FeCrCoNi"` prints a finite value.
 - [ ] `cwsr-query --results <refined.json>` (no formula) enters interactive mode and exits on `q`.
-- [ ] `cwsr` / `cwsr-eval` at least parse `--help` without import errors.
+- [ ] `cwsr-query` / `cwsr-gallery` at least parse `--help` without import errors,
+      and so do the legacy scripts: `python scripts/run_cwsr.py --help`,
+      `python scripts/eval.py --help`.
 - [ ] Verify output/params JSON written by training are valid JSON and loadable by
       `cwsr.predict.query`.
 
@@ -114,8 +116,9 @@ PY
 
 ## Known gaps to close before publication
 - Engine internals currently have **only smoke coverage**, not unit tests (§2).
-- `eval.py` / `run_cwsr.py` (top-level) still target the Matbench workflow and are
-  not yet migrated onto the unified `cwsr` framework (see `docs/design.md`).
+- The legacy Matbench runners (`scripts/run_cwsr.py`, `scripts/eval.py`) are
+  kept as runnable examples only; they are not migrated onto the unified `cwsr`
+  framework (see `docs/design.md`).
 - Inverse design, Pareto, bootstrap UQ and plotting are not yet ported into `cwsr`
   (present only in the reference `Alloys-SR` project).
 - Alloy data + example scripts live under git-ignored `examples/`; ensure the

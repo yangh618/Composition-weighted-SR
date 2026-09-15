@@ -5,7 +5,8 @@ composition -> property task. Downstream modules (train, eval, query, inverse,
 Pareto, bootstrap) are written against this schema only, never against a
 specific database layout, which is what makes the framework task-agnostic.
 
-This module is the data *schema*: the container plus element-safe splitting.
+This module is the data *schema*: the container plus the element-safe
+train/valid splitting (chemical-formula parsing lives in :mod:`cwsr.formula`).
 Loading real databases is a separate concern — concrete providers and their
 registry live in the top-level :mod:`datasets` package, which also re-exports
 this module for convenience.

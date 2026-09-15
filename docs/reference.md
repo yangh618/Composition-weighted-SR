@@ -57,7 +57,9 @@ number `Z`; `H`..`Og`), summing to 1.
 - `ELEMENT_SYMBOLS : list[str]` — 118 element symbols, index = zero-based Z.
 - `form2comp(formula: str) -> np.ndarray` — parse a chemical formula
   (fractional stoichiometry OK, via pymatgen) into a normalized (118,)
-  vector. Raises on unparseable formulas.
+  vector. Raises on unparseable formulas. This is the canonical
+  formula → composition converter: the dataset providers and
+  `cwsr.predict.query` all use it.
 - `composition_to_formula(composition, threshold=1e-6) -> str` — vector → a
   formula string like `"Al0.25CoCrFeNi"` (fractions ≈1 written without index).
 - `format_composition(composition, top_n=20, threshold=1e-6) -> str` —
@@ -127,6 +129,11 @@ Split helpers
     `target_name`, `source`.
 - `register_provider(name, provider)` — register `provider(task_or_name,
   **kwargs) -> CompositionDataset`.
+- `datasets.matbench.load_matbench(task_key, fold=0) -> (compositions, targets)`
+  and `datasets.matbench.load_matbench_test(task_key, fold=0,
+  include_target=False) -> (compositions, targets|None)` — the raw Matbench
+  loaders behind the provider (train+val / test splits). They need the
+  optional `matbench` package, which is why the provider's imports are lazy.
 
 ```python
 from datasets import get_dataset, list_datasets
@@ -436,10 +443,12 @@ colour train/valid points), `notes`, `tags`.
 
 | Command | Module |
 |---|---|
-| `cwsr` | `run_cwsr` (Matbench CLI runner) |
-| `cwsr-eval` | `eval` |
 | `cwsr-query` | `cwsr.predict.query` |
 | `cwsr-gallery` | `cwsr.plotting.gallery` |
+
+The legacy Matbench runners are **not** installed entry points; they live in
+`scripts/` as runnable examples (`python scripts/run_cwsr.py …`,
+`python scripts/eval.py …` — see `scripts/README.md`).
 
 Example:
 

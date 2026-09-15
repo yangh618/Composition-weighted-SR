@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""
-Tabulated Invariant Symbolic Regression (TISR) Runner
+"""Legacy Matbench CLI runner (example command-line script).
 
-This script provides a command-line interface to run symbolic regression
-experiments using the TISR framework on Matbench datasets.
+Drives a CWSR search on a Matbench task via :class:`cwsr.Regressor`, writing
+``cwsr_outputs_*`` / ``cwsr_params_*`` JSON. Kept as a runnable example of
+using the engine directly; the maintained high-level path is
+``datasets.get_dataset(...)`` + ``cwsr.model.fit_dataset(...)`` (see
+``docs/tutorial.md``).
+
+Usage (from the repository root, with the package importable)::
+
+    python scripts/run_cwsr.py --task matbench_expt_gap --max_expressions 200
 """
 
 import argparse
@@ -16,19 +22,19 @@ from typing import Tuple
 import numpy as np
 
 from cwsr import Regressor
-from dataloader import load_matbench, load_matbench_test
+from datasets.matbench import load_matbench, load_matbench_test
 
 
 def create_parser() -> argparse.ArgumentParser:
     """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
-        description='Run Tabulated Invariant Symbolic Regression (TISR)',
+        description='Run Composition-weighted Symbolic Regression (CWSR) on Matbench',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python run_cwsr.py
-  python run_cwsr.py --task matbench_mp_gap --max_expressions 1000
-  python run_cwsr.py --ops mul sub add div sqrt --output_dir ./results
+  python scripts/run_cwsr.py
+  python scripts/run_cwsr.py --task matbench_mp_gap --max_expressions 1000
+  python scripts/run_cwsr.py --ops mul sub add div sqrt --output_dir ./results
         """
     )
 
