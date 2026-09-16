@@ -46,7 +46,7 @@ Exports
 - `cwsr.simplify_expression(exp_str, verbose=False) -> str` — clean/simplify an
   expression string via sympy.
 - `datasets` — concrete data providers + registry (§3).
-- `cwsr.__version__` — `"0.1.0"`.
+- `cwsr.__version__` — `"0.2.0"`.
 
 ---
 

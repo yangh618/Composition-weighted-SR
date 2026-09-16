@@ -41,7 +41,7 @@ extra_deps = [
 
 setup(
     name="cwsr",
-    version="0.1.0",
+    version="0.2.0",
     description="Composition-weighted Symbolic Regression (CWSR) with MCTS",
     long_description=long_description,
     long_description_content_type="text/markdown",
