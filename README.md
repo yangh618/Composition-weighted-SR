@@ -130,7 +130,7 @@ tests/           pytest suite (unit + integration) — see TESTING.md
 
 ## Versioning
 
-Current release: **v0.1.0** (package `version` and `cwsr.__version__` aligned).
+Current release: **v0.2.0** (package `version` and `cwsr.__version__` aligned).
 
 ## References
 
