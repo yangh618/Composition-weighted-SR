@@ -27,8 +27,9 @@ modules in the package root:
 
 Framework subpackages: `cwsr.formula`, `cwsr.data` (dataset schema + splits),
 `cwsr.model`, `cwsr.predict` (`forward`, `query`), `cwsr.plotting`
-(`periodic_table`, `gallery`), and the top-level `datasets` package
-(`matbench`, `alloy`, `registry`).
+(`periodic_table`, `gallery`), and the top-level `datasets` (concrete database
+providers + registry) and `analysis` (inverse design, Pareto, bootstrap UQ)
+packages.
 
 ---
 
@@ -431,7 +432,7 @@ Reads a JSON manifest of entries and, per entry, renders a parity plot
 (predicted vs. reference) and a periodic-table coefficient map, then writes the
 Markdown page plus PNGs under `<page_dir>/assets/gallery/`. Add a result by
 appending an entry to the manifest and re-running the command — the page grows
-gradually. CLI: `cwsr-gallery` (see §8).
+gradually. CLI: `cwsr-gallery` (see §9).
 
 Manifest entry fields: `id`, `title`, `dataset` (+ `dataset_kwargs`), `results`
 (path to a `cwsr_outputs_*.json`), `rank`, optional `split_ratio`/`seed` (to
@@ -439,12 +440,109 @@ colour train/valid points), `notes`, `tags`.
 
 ---
 
-## 8. Console entry points
+## 8. `analysis` — inverse design, Pareto fronts, bootstrap UQ
+
+Task-agnostic post-training analysis. Every entry point consumes the same
+artifacts as the rest of the framework (`cwsr_outputs_*.json` / refined-results
+JSON) plus a dataset name or `.npz` path resolved by `datasets.get_dataset`.
+Submodules are imported lazily (they pull in scipy/joblib), so
+`import analysis` stays cheap.
+
+### 8.1 `analysis._common` — shared helpers
+
+- `load_expression_from_results(results_path, index=0) -> (expression, weights)`
+  — accepts a ranked outputs list or a single output dict.
+- `load_expression_specs([(name, path), ...], index=0) -> list[dict]`
+- `resolve_active_indices(elements=None) -> np.ndarray` — atomic numbers,
+  chemical symbols, mixed lists, or `None` (= all 118).
+- `describe_elements(indices) -> str`, `present_elements(compositions) -> np.ndarray`
+- `save_json(path, payload) -> Path`
+
+### 8.2 `analysis.inverse` — composition design
+
+- `optimize_target(weights, expression_func, target, grad_funcs=None,
+  active_elements=None, n_trials=10, method="L-BFGS-B", verbose=False)
+  -> (composition, prediction, error)` — hit a target property value.
+- `optimize_weighted_sum(element_weights_list, expression_funcs,
+  grad_funcs_list, obj_weights, active_indices, n_multistart=10, seed=None,
+  verbose=False) -> (composition, values)` — positive weight = maximize,
+  negative = minimize.
+- `optimize_tchebycheff(...)` — augmented weighted Tchebycheff scalarization
+  for non-convex fronts; `scalar_weights` selects the front region (used for
+  sweeping).
+
+```python
+from analysis._common import load_expression_from_results
+from analysis.inverse import optimize_target
+from cwsr.predict import compile_expression, compile_gradient_functions
+
+expression, W = load_expression_from_results("results/cwsr_outputs_density.json")
+f = compile_expression(expression, W.shape[0])
+g = compile_gradient_functions(expression, W.shape[0])
+comp, pred, err = optimize_target(W, f, target=7.5, grad_funcs=g,
+                                  active_elements=["Fe", "Cr", "Co", "Ni"])
+```
+
+CLI: `cwsr-inverse` / `python -m analysis.inverse` — `--refined_results
+name:path` (repeatable), `--target` or `--obj_weights`, `--elements`,
+`--trials`, `--expr_idx`, `--output`.
+
+### 8.3 `analysis.pareto` — Pareto front
+
+- `compute_pareto_front_analytical(element_weights_list, expression_funcs,
+  grad_funcs_list, obj_weights, active_indices, n_pareto_points=100,
+  seed=None, n_multistart=10, verbose=True) -> (compositions, values)`
+  — sweeps Tchebycheff scalarizations across the simplex (a 2-objective sweep
+  for `n_obj == 2`, Dirichlet samples beyond), dedupes the optima and keeps
+  only the non-dominated points: `compositions` is `(m, 118)` and `values`
+  `(m, n_obj)`.
+
+CLI: `cwsr-pareto` / `python -m analysis.pareto` — `--refined_results` (twice
+or more), `--obj_weights`, `--n_pareto_points`, `--trials`, `--elements`,
+`--threshold`, `--output` (writes a ranked `pareto_front` JSON with per-point
+formulas and property values).
+
+### 8.4 `analysis.bootstrap` — uncertainty quantification
+
+- `bootstrap_resample(x_train, y_train, x_test, y_test, expression,
+  weights_original, var_count, n_bootstrap=200, random_seed=None,
+  num_trials=5, n_jobs=1) -> (y_pred_all_train, y_pred_all_test, weights_all,
+  success_mask)` — resamples the training set with element-safe splits and
+  re-optimises the weights on each resample via NLopt (warm start from
+  `weights_original`), returning per-resample predictions/weights.
+- `compute_confidence_intervals(y_pred_all, ci_level=95)
+  -> (mean, std, ci_lower, ci_upper)`
+- `compute_bootstrap_metrics(y_true, y_pred_all, ci_level=95) -> dict` — MAE,
+  RMSE and R² means/stds/CIs plus `n_successful`.
+- `run_bootstrap(...) -> dict` — orchestrates the above and returns metrics for
+  the training and evaluation pools with prediction statistics.
+- `load_top_expressions(results_path, top_n=3) -> list` — top-N candidates from
+  a results JSON.
+- `write_refined_results(bootstrap_result, output_path) -> Path` — exports the
+  bootstrap-best expression as a one-entry refined-results JSON consumable by
+  `cwsr-query`, `analysis.inverse` and `analysis.pareto`.
+
+CLI: `cwsr-bootstrap` / `python -m analysis.bootstrap` — `--dataset`,
+`--results`, `--expr_idx`, `--n_bootstrap`, `--num_trials`, `--jobs`,
+`--ci_level`, `--split_ratio`, `--output`, `--refined_output`.
+
+```bash
+python -m analysis.bootstrap --dataset alloy_density \
+    --results gallery/results/alloy_density/cwsr_outputs_*.json \
+    --n_bootstrap 50 --jobs 4 --refined_output results/refined_results_density.json
+```
+
+---
+
+## 9. Console entry points
 
 | Command | Module |
 |---|---|
 | `cwsr-query` | `cwsr.predict.query` |
 | `cwsr-gallery` | `cwsr.plotting.gallery` |
+| `cwsr-inverse` | `analysis.inverse` |
+| `cwsr-pareto` | `analysis.pareto` |
+| `cwsr-bootstrap` | `analysis.bootstrap` |
 
 The legacy Matbench runners are **not** installed entry points; they live in
 `scripts/` as runnable examples (`python scripts/run_cwsr.py …`,
@@ -459,7 +557,7 @@ cwsr-gallery --manifest gallery/manifest.json --page docs/gallery.md
 
 ---
 
-## 9. Conventions & notes
+## 10. Conventions & notes
 
 - **Shapes**: compositions `(n, 118)`; weights `(var_count, 118)`;
   expression functions accept `(n, var_count) -> (n,)`.

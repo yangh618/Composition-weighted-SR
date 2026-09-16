@@ -34,6 +34,9 @@ examples
 *png
 *eps
 
+# keep generated gallery figures (published with the docs site)
+!docs/assets/gallery/*.png
+
 # python bytecode / caches
 __pycache__/
 *.py[cod]
@@ -46,3 +49,6 @@ dist/
 
 # runtime caches
 joblib_cache/
+
+# test tooling
+.pytest_cache/

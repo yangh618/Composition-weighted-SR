@@ -279,11 +279,29 @@ python tests/smoke_matbench.py --task matbench_glass --max-samples 150 --max-exp
 - The verbose training log prints a live "best expression / MAE" report; look
   at `outputs[0]` for the final champion with its optimized `W`.
 
-## 8. Roadmap
+## 8. Post-training analysis
 
-Inverse design, Pareto-front optimisation, bootstrap UQ and the plotting suite
-are implemented in the reference `Alloys-SR` project and are being ported into
-`cwsr` (`cwsr/design`, `cwsr/validate`, `cwsr/plotting`) per `DESIGN.md`; the
-public dataset/train/predict API above is stable and already covers the core
-end-to-end workflow.
+Inverse design, Pareto fronts and bootstrap UQ now ship in the `analysis`
+package (ported from the reference `Alloys-SR` project):
+
+```bash
+# 1. bootstrap the best expression and export a refined-results file
+cwsr-bootstrap --dataset alloy_density \
+    --results results/cwsr_outputs_alloy_density_*.json \
+    --n_bootstrap 50 --jobs 4 --refined_output results/refined_results_density.json
+
+# 2. design a composition that hits a target value
+cwsr-inverse --refined_results density:results/refined_results_density.json \
+    --target 7.6 --elements Fe Cr Co Ni Al
+
+# 3. Pareto front between two properties
+cwsr-pareto --refined_results hardness:results/hardness.json \
+    --refined_results density:results/refined_results_density.json \
+    --obj_weights 1.0 -1.0 --n_pareto_points 20
+```
+
+The Python API (`analysis.inverse`, `analysis.pareto`, `analysis.bootstrap`) is
+documented in [API Reference §8](reference.md). The remaining roadmap items —
+the plotting suite (parity, Pareto and periodic-table figures) and the unified
+`cwsr` CLI — are tracked in `docs/design.md`.
 

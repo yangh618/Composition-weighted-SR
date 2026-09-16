@@ -48,6 +48,8 @@ search and `f` is a symbolic expression in the `var_count` latent variables.
   registry, and the bundled alloy databases (`datasets/alloys/data`).
 - `scripts/` — legacy Matbench CLI/eval runners + shell drivers (runnable
   examples; see `scripts/README.md`).
+- `analysis/` — post-training analysis: inverse design, Pareto fronts and
+  bootstrap UQ (`analysis.inverse`, `analysis.pareto`, `analysis.bootstrap`).
 - `tests/` — short-time smoke tests (alloy + Matbench).
 - `gallery/` — result manifest + the generated [results gallery](gallery.md).
 - `examples/` — local example scripts (see `examples/alloys/`).
