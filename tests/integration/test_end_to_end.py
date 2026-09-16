@@ -107,6 +107,20 @@ def test_every_training_run_is_persisted(fitted_run):
     assert checkpoint["mcts"]["count_num"] > 0
     assert isinstance(checkpoint["mcts"]["tree"], list)
 
+    # the run state is embedded and carries dataset provenance from fit_dataset
+    from cwsr.data import split_dataset
+
+    state = checkpoint["regressor"]
+    assert state["meta"]["dataset"] == fitted_run.dataset.name
+    assert state["meta"]["n_samples"] == fitted_run.dataset.n_samples
+    assert state["config"]["var_count"] == 1
+    # the stored data is the run's training split (fit_dataset uses ratio=0.8)
+    train_idx, _ = split_dataset(fitted_run.dataset.compositions,
+                                 fitted_run.dataset.targets, ratio=0.8, seed=0)
+    assert len(state["data"]["x_train"]) == len(train_idx)
+    assert np.allclose(np.asarray(state["data"]["x_train"]),
+                       fitted_run.dataset.compositions[train_idx])
+
 
 def test_train_helper_writes_its_output_file(tmp_path):
     """``cwsr.model.train`` writes ``<prefix>.json`` (documented artifact name)."""

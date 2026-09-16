@@ -64,9 +64,20 @@ def fit_dataset(dataset: CompositionDataset,
                 split_ratio: float = 0.8,
                 seed: Optional[int] = None,
                 **regressor_kwargs) -> dict:
-    """Train on a :class:`CompositionDataset`, saving results under ``output_dir``."""
+    """Train on a :class:`CompositionDataset`, saving results under ``output_dir``.
+
+    Dataset provenance (name/target/source/sample count) is recorded in the run
+    state, so the checkpoint written by the run is self-describing.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    # Provenance travels into the saved state / final checkpoint.
+    regressor_kwargs.setdefault("run_meta", {
+        "dataset": dataset.name,
+        "target_name": dataset.target_name,
+        "source": dataset.source,
+        "n_samples": dataset.n_samples,
+    })
     timestamp = int(time.time())
     prefix = output_dir / f"cwsr_outputs_{dataset.name}_{timestamp}"
     return train(dataset.compositions, dataset.targets,

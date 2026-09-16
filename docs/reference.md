@@ -346,6 +346,48 @@ model.fit(seed=42, checkpoint=resumed)   # continues the search
 `<output_dir>/cwsr_outputs_<dataset>_<ts>.json` plus the `_final` / `_ckpt_final`
 artifacts — so the JSON is directly consumable by `cwsr-query`,
 `analysis.inverse`, `analysis.pareto` and `analysis.bootstrap`.)
+
+### 6.1a Loading & restarting a saved run
+
+| API | Purpose |
+|---|---|
+| `state_dict(mcts=None, outputs=None) -> dict` | serializable run description: `config` (all constructor settings), `data` (train/valid arrays), `results`, `meta` (provenance + counters). |
+| `Regressor.from_state(state, **overrides)` | rebuild a `Regressor` from a state dict; `overrides` replace settings (`max_expressions=`, `output_prefix=`, `reward_func=`, or new `x_train=`/`y_train=`). |
+| `Regressor.load(path_or_dict, **overrides)` | load a checkpoint written by `fit` (file or parsed dict); returns the rebuilt model with `.checkpoint` and `.results` attached. |
+| `Regressor.resume(path, seed=None, **overrides)` | `load` + continue the search; returns the same tuple as `fit`. |
+| `Regressor.from_results(path, x_train, y_train[, x_valid, y_valid], warm_start_top_n=3, **overrides)` | rebuild from a results-only JSON (the saved *model*) and warm-start a new search. |
+
+The final checkpoint is **self-describing**: `{"mcts": …, "regressor": state_dict}`
+— so one file is enough to rebuild the model (config + data) *and* resume the
+search:
+
+```python
+from cwsr import Regressor
+
+# continue a run (same data, same hyperparameters, more budget)
+simplified, raw, n_evals, path, outputs = Regressor.resume(
+    "results/density_run_ckpt_final.json", seed=42, max_expressions=20000,
+    output_prefix="results/density_run2")
+
+# or step by step, with full control
+model = Regressor.load("results/density_run_ckpt_final.json")
+model.fit(seed=42, checkpoint=model.checkpoint)
+
+# restart from a saved model on (possibly) new data, keeping the old champions
+model = Regressor.from_results("results/density_run_final.json",
+                               x_train=X, y_train=y, x_valid=Xv, y_valid=yv,
+                               var_count=3, max_expressions=20000)
+model.fit(seed=42)      # prints "[Warm start] Seeded N expression(s) / M path(s)"
+```
+
+Warm-start semantics: the loaded expressions are queued as evaluated candidates
+(so they appear in the new ranking and are never lost), and — when their
+operator shape can be rebuilt inside `max_depth` and the current op set — their
+paths also seed the genetic-programming pool, so mutation/crossover start from
+the previous law. Expressions whose shape cannot be rebuilt (e.g. a literal
+constant when the op set has no `R` token) raise a `UserWarning` and are kept as
+candidates only. `reward_func` is not serializable — pass it again if the
+original run used one.
 - `build_MAE_loss(expr_str, X, Y) -> Callable` — objective over a parameter
   vector.
 - `optimize_weights(best_expr, is_positive_init) -> (mae, mae_valid, W)` —

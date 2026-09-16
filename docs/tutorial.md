@@ -231,6 +231,47 @@ outputs = fit_dataset(ds, output_dir="results", seed=42,
 # results/cwsr_outputs_<dataset>_<ts>_ckpt_final.json
 ```
 
+### (e) Loading a saved run and restarting
+
+The final checkpoint is **self-describing** (MCTS state + the full run state:
+hyperparameters, the training data, the results and provenance like the dataset
+name), so a single file is enough to rebuild the model and continue:
+
+```python
+from cwsr import Regressor
+
+# 1. continue exactly where the run stopped (more budget, same everything)
+simplified, raw, n_evals, path, outputs = Regressor.resume(
+    "results/density_run_ckpt_final.json",
+    seed=42, max_expressions=50000,                  # override what you want to change
+    output_prefix="results/density_run_part2",       # keep saving the new segment
+)
+
+# 2. or step by step, if you want the model object first
+model = Regressor.load("results/density_run_ckpt_final.json")
+print(model.var_count, model.run_meta)               # rebuilt from the file
+model.fit(seed=42, checkpoint=model.checkpoint)
+```
+
+If you only kept the results JSON (the *model*), rebuild from that — the data is
+yours to supply, and the previous champions warm-start the new search:
+
+```python
+model = Regressor.from_results(
+    "results/density_run_final.json",
+    x_train=X[tr], y_train=y[tr], x_valid=X[va], y_valid=y[va],
+    var_count=3, ops=[...], max_expressions=50000, seed=42,
+)
+model.fit(seed=42)
+# [Warm start] Seeded 3 expression(s) / 3 path(s) from loaded results
+```
+
+The loaded expressions are kept as candidates in the new ranking, and their
+operator paths join the mutation/crossover pool, so the search continues from the
+previous law instead of starting over. Anything whose shape cannot be rebuilt
+inside `max_depth`/the op set (e.g. a literal constant when `R` is not in `ops`)
+only lands in the candidate list, with a `UserWarning` explaining why.
+
 ---
 
 ## 4. Using a trained model (prediction)

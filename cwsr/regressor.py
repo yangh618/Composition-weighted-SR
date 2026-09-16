@@ -12,6 +12,95 @@ from cwsr.gp import GPManager
 import gc
 
 
+#: SymPy function names the engine's op set can represent (name -> engine op).
+_FUNCTION_OPS = {"sqrt": "sqrt", "exp": "exp", "log": "log", "sin": "sin",
+                 "cos": "cos", "tanh": "tanh", "Abs": "Abs",
+                 "Max": "Max", "Min": "Min"}
+
+#: Constructor settings captured by :meth:`Regressor.state_dict` (and restored by
+#: :meth:`Regressor.from_state`). ``reward_func`` is deliberately absent (a
+#: callable cannot be serialized).
+_STATE_CONFIG_KEYS = ("var_count", "ops", "max_depth", "K", "c", "gamma",
+                      "gp_rate", "mutation_rate", "exploration_rate",
+                      "max_single_arity_ops", "max_constants", "max_expressions",
+                      "num_parallel", "num_batches", "num_trials",
+                      "lbfgs_upper_bound", "optimization_method", "seed",
+                      "verbose", "save_every", "save_checkpoint_every",
+                      "output_prefix")
+
+
+def _is_variable(op: str) -> bool:
+    """True for the engine's variable tokens (``x0``, ``x1``, ...)."""
+    return op.startswith("x") and op[1:].isdigit()
+
+
+
+def _expression_to_path(expression: str) -> List[str]:
+    """Convert a symbolic expression into the engine's operator path.
+
+    The returned list is the pre-order operator sequence an
+    :class:`~cwsr.exp_tree.ExpTree` consumes (``add``, ``mul``, ``Pow``,
+    ``sqrt``, ``x0``, ``R``, ...), which is what the genetic-programming pool
+    (:attr:`~cwsr.mcts.MCTS.path_queue`) stores. Numeric literals become the
+    optimizable constant token ``R`` (they are re-optimised on the next search),
+    ``x{i}`` stays a variable, n-ary sums/products are folded into binary
+    ``add``/``mul`` chains, and ``a - b`` / ``a / b`` are expressed as
+    ``add``/``mul`` with an ``R`` operand — the constant absorbs the sign or the
+    reciprocal, so the shape still fits the engine's operator set.
+
+    Raises ``ValueError`` for nodes the engine cannot represent (unknown
+    symbols or functions).
+    """
+    from sympy import Add, Max, Min, Mul, Number, Pow, Rational, Symbol, sympify
+    from sympy.core.function import Function
+
+    def walk(node) -> List[str]:
+        if isinstance(node, Number):
+            return ["R"]
+        if isinstance(node, Symbol):
+            name = str(node)
+            if name.startswith("x") and name[1:].isdigit():
+                return [name]
+            if name[:1] in ("R", "C"):      # latent constant symbols
+                return ["R"]
+            raise ValueError(f"unsupported symbol '{name}'")
+        if isinstance(node, Add):
+            args = list(node.args)
+            ops = walk(args[0])
+            for arg in args[1:]:
+                ops = ["add"] + ops + walk(arg)
+            return ops
+        if isinstance(node, Mul):
+            args = list(node.args)
+            ops = walk(args[0])
+            for arg in args[1:]:
+                ops = ["mul"] + ops + walk(arg)
+            return ops
+        if isinstance(node, Pow):
+            base, exponent = node.args
+            if exponent == Rational(1, 2):
+                return ["sqrt"] + walk(base)
+            return ["Pow"] + walk(base) + walk(exponent)
+        if isinstance(node, (Max, Min)):
+            args = list(node.args)
+            op = "Max" if isinstance(node, Max) else "Min"
+            ops = walk(args[0])
+            for arg in args[1:]:
+                ops = [op] + ops + walk(arg)
+            return ops
+        if isinstance(node, Function):
+            name = node.func.__name__
+            if name not in _FUNCTION_OPS:
+                raise ValueError(f"unsupported function '{name}'")
+            return [_FUNCTION_OPS[name]] + walk(node.args[0])
+        raise ValueError(f"unsupported expression node '{node}'")
+
+    ops = walk(sympify(expression))
+    if not ops:
+        raise ValueError(f"empty expression: {expression!r}")
+    return ops
+
+
 def _warn_if_no_output_prefix(save_every: int,
                               save_checkpoint_every: int,
                               output_prefix: Optional[str]) -> None:
@@ -84,6 +173,8 @@ class Regressor:
         save_every: int = 0,
         save_checkpoint_every: int = 0,
         output_prefix: str = None,
+        warm_start: Optional[List[Dict]] = None,
+        run_meta: Optional[Dict] = None,
     ):
         """
         Symbolic Regression Regressor with MCTS optimization
@@ -101,6 +192,13 @@ class Regressor:
             expressions (requires ``output_prefix``).
         save_checkpoint_every (int, optional): Write a resumable MCTS checkpoint
             every N evaluated expressions (requires ``output_prefix``).
+        warm_start (list[dict], optional): Previously discovered results (the
+            ``outputs`` list of an earlier run) to seed the new search with. Their
+            expressions are queued as the starting champions and, when the shape
+            can be rebuilt, their operator paths also join the genetic-programming
+            pool. See :meth:`from_results`.
+        run_meta (dict, optional): Free-form provenance recorded in
+            :meth:`state_dict` / the final checkpoint (e.g. dataset name).
         """
         # Input validation
         self._validate_inputs(x_train, y_train, max_depth)
@@ -156,6 +254,15 @@ class Regressor:
         self.save_every = save_every
         self.save_checkpoint_every = save_checkpoint_every
         self.output_prefix = output_prefix
+        # Persistence / restart bookkeeping
+        self.optimization_method = optimization_method
+        self.run_meta = dict(run_meta or {})
+        #: Loaded results (list of dicts with expression/rewards) used as a warm start.
+        self.warm_start: List[Dict] = list(warm_start or [])
+        #: Previous results attached by :meth:`load` / :meth:`from_state`.
+        self.results: Optional[List[Dict]] = None
+        #: MCTS state attached by :meth:`load`; pass it to ``fit(checkpoint=...)``.
+        self.checkpoint: Optional[Dict] = None
         # Initialize core components
         self.optimizer = Optimizer(
             var_count,
@@ -179,8 +286,14 @@ class Regressor:
           * ``<output_prefix>_step<N>.json``      — ranked results every ``save_every`` expressions
           * ``<output_prefix>_ckpt_step<N>.json`` — resumable MCTS state every ``save_checkpoint_every``
           * ``<output_prefix>_final.json``        — the finished run's ranked results
-          * ``<output_prefix>_ckpt_final.json``   — the finished run's MCTS state (resume with
-            ``fit(checkpoint=load_checkpoint(path)["mcts"])``)
+          * ``<output_prefix>_ckpt_final.json``   — the finished run's MCTS state *plus* a full
+            ``regressor`` state (config + data + results + provenance), so the run can be rebuilt
+            and restarted with :meth:`load` / :meth:`resume`.
+
+        Restarting:
+          * ``fit(checkpoint=...)`` continues an MCTS state (see :meth:`resume`);
+          * a model built by :meth:`from_results` (or a state carrying ``results``)
+            warm-starts the new search with the previous champions.
 
         Without ``output_prefix`` nothing is written (a ``UserWarning`` is raised
         if the save flags were requested).
@@ -199,6 +312,10 @@ class Regressor:
                 from cwsr.checkpoint import mcts_from_dict
                 mcts_from_dict(checkpoint, mcts)
                 print(f"[Checkpoint] Resumed MCTS from {mcts.count_num} evaluations")
+            elif self.warm_start:
+                self._seed_from_warm_start(mcts)
+                print(f"[Warm start] Seeded {len(mcts.exp_queue)} expression(s) / "
+                      f"{len(mcts.path_queue)} path(s) from loaded results")
             self.start_time = time.time()
             outputs = self.find_best(mcts)
             exp_str, _, _ = mcts.exp_queue.best()
@@ -320,6 +437,214 @@ class Regressor:
         ]
         print("\n".join(report))
 
+    def state_dict(self, mcts: Optional[MCTS] = None,
+                   outputs: Optional[List[Dict]] = None) -> Dict:
+        """Serializable description of this run: config + data + results + meta.
+
+        This is what :meth:`_save_final` embeds in the final checkpoint under the
+        ``regressor`` key, and what :meth:`from_state` consumes, so a saved run
+        can be rebuilt — and restarted — without re-deriving the hyperparameters.
+        """
+        config = {
+            "var_count": int(self.var_count),
+            "ops": [op for op in self.ops if not _is_variable(op)],
+            "max_depth": int(self.max_depth),
+            "K": int(self.K),
+            "c": float(self.c),
+            "gamma": float(self.gamma),
+            "gp_rate": float(self.gp_rate),
+            "mutation_rate": float(self.mutation_rate),
+            "exploration_rate": float(self.exploration_rate),
+            "max_single_arity_ops": int(self.max_single_arity_ops),
+            "max_constants": int(self.max_constants),
+            "max_expressions": self.max_expressions,
+            "num_parallel": int(self.num_parallel),
+            "num_batches": int(self.num_batches),
+            "num_trials": int(self.num_trials),
+            "lbfgs_upper_bound": float(self.lbfgs_upper_bound),
+            "optimization_method": str(self.optimization_method),
+            "seed": self.seed,
+            "verbose": bool(self.verbose),
+            "save_every": int(self.save_every),
+            "save_checkpoint_every": int(self.save_checkpoint_every),
+            "output_prefix": self.output_prefix,
+        }
+        data = {
+            "x_train": np.asarray(self.x_train).tolist(),
+            "y_train": np.asarray(self.y_train).tolist(),
+            "x_valid": None if self.x_valid is None else np.asarray(self.x_valid).tolist(),
+            "y_valid": None if self.y_valid is None else np.asarray(self.y_valid).tolist(),
+        }
+        meta = dict(self.run_meta)
+        if mcts is not None:
+            meta.update({"count_num": int(mcts.count_num),
+                         "best_reward": float(mcts.best_reward),
+                         "total_nodes": int(mcts.total_nodes)})
+        return {
+            "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "config": config,
+            "data": data,
+            "results": outputs,
+            "meta": meta,
+        }
+
+    @classmethod
+    def from_state(cls, state: Dict, **overrides) -> "Regressor":
+        """Rebuild a :class:`Regressor` from a :meth:`state_dict` payload.
+
+        Keyword ``overrides`` replace individual settings — e.g.
+        ``max_expressions=20000`` to keep searching longer, or ``output_prefix=``
+        to redirect the artifacts — and may also provide ``x_train``/``y_train``
+        for a state that carries no data. ``reward_func`` cannot be serialized,
+        so pass it explicitly if the original run used one. Previous results are
+        attached as ``model.results`` and used as the warm start.
+        """
+        config = dict(state.get("config") or {})
+        data = dict(state.get("data") or {})
+        config.update({key: value for key, value in overrides.items()
+                       if key in _STATE_CONFIG_KEYS})
+
+        x_train = overrides.get("x_train", data.get("x_train"))
+        y_train = overrides.get("y_train", data.get("y_train"))
+        if x_train is None or y_train is None:
+            raise ValueError(
+                "state carries no training data: pass x_train=/y_train= as "
+                "overrides (or use Regressor.from_results with your dataset)"
+            )
+        x_valid = overrides.get("x_valid", data.get("x_valid"))
+        y_valid = overrides.get("y_valid", data.get("y_valid"))
+
+        kwargs = {key: config[key] for key in _STATE_CONFIG_KEYS
+                  if key in config and config[key] is not None}
+        model = cls(
+            x_train=np.asarray(x_train, dtype=np.float64),
+            y_train=np.asarray(y_train, dtype=np.float64),
+            x_valid=None if x_valid is None else np.asarray(x_valid, dtype=np.float64),
+            y_valid=None if y_valid is None else np.asarray(y_valid, dtype=np.float64),
+            **kwargs,
+        )
+        model.results = state.get("results")
+        if model.results and not model.warm_start:
+            model.warm_start = list(model.results)
+        return model
+
+    @classmethod
+    def load(cls, path, **overrides) -> "Regressor":
+        """Load a saved run (checkpoint file **or** already-parsed dict).
+
+        The checkpoint written by :meth:`fit` carries both the MCTS state and the
+        full ``regressor`` state, so the returned model is ready to continue::
+
+            model = Regressor.load("results/run_ckpt_final.json")
+            model.fit(seed=0, checkpoint=model.checkpoint)   # or Regressor.resume(path)
+
+        Raises ``ValueError`` for files that are not checkpoints (a results-only
+        JSON has no data) — use :meth:`from_results` for those.
+        """
+        if isinstance(path, dict):
+            payload = path
+        else:
+            from cwsr.checkpoint import load_checkpoint
+            payload = load_checkpoint(path)
+        if "regressor" not in payload:
+            raise ValueError(
+                f"{path!r} contains no 'regressor' state, so it is not a checkpoint "
+                "written by Regressor.fit. For a results JSON use "
+                "Regressor.from_results(path, x_train=..., y_train=...)."
+            )
+        model = cls.from_state(payload["regressor"], **overrides)
+        model.checkpoint = payload.get("mcts")
+        return model
+
+    @classmethod
+    def resume(cls, path, seed: Optional[int] = None, **overrides):
+        """Load a checkpoint and continue its search.
+
+        Shorthand for ``Regressor.load(path, **overrides).fit(seed=seed,
+        checkpoint=model.checkpoint)``; returns the same tuple as :meth:`fit`.
+        ``overrides`` can extend the run (``max_expressions=20000``) or redirect
+        its artifacts (``output_prefix=...``).
+        """
+        model = cls.load(path, **overrides)
+        return model.fit(seed=seed, checkpoint=model.checkpoint)
+
+    @classmethod
+    def from_results(cls, results_path, x_train, y_train,
+                     x_valid=None, y_valid=None,
+                     warm_start_top_n: int = 3, **overrides) -> "Regressor":
+        """Rebuild a model from a saved results JSON and warm-start a new search.
+
+        Results files carry expressions and weights but no data, so the data is
+        supplied by the caller (typically the dataset the model was trained on).
+        The top ``warm_start_top_n`` entries become the starting champions: they
+        are queued as evaluated results and — when their operator shape can be
+        rebuilt within ``max_depth``/the op set — their paths also join the
+        genetic-programming pool, so the new search mutates the previous law
+        instead of starting from nothing.
+        """
+        with open(results_path, "r") as handle:
+            entries = json.load(handle)
+        if isinstance(entries, dict):
+            entries = [entries]
+        warm_start = list(entries[:warm_start_top_n])
+
+        model = cls(
+            x_train=np.asarray(x_train, dtype=np.float64),
+            y_train=np.asarray(y_train, dtype=np.float64),
+            x_valid=None if x_valid is None else np.asarray(x_valid, dtype=np.float64),
+            y_valid=None if y_valid is None else np.asarray(y_valid, dtype=np.float64),
+            warm_start=warm_start,
+            **overrides,
+        )
+        model.results = entries
+        return model
+
+    def _seed_from_warm_start(self, mcts: MCTS) -> None:
+        """Seed the queues from :attr:`warm_start` so a loaded model keeps competing.
+
+        Expressions always join the results queue (they then appear in the final
+        ranking); operator paths join the genetic-programming pool only when the
+        engine can rebuild them within ``max_depth`` and the current op set.
+        """
+        for entry in self.warm_start:
+            expression = entry.get("expression")
+            if not expression:
+                continue
+            train_reward = float(entry.get("train_reward") or 0.0)
+            valid_reward = float(entry.get("valid_reward") or 0.0)
+            mcts.exp_queue.append(str(expression), train_reward, valid_reward)
+            mcts.best_reward = max(mcts.best_reward, valid_reward)
+
+            path = None
+            try:
+                path = _expression_to_path(str(expression))
+            except Exception:
+                path = None
+            if path and self._path_is_valid(path):
+                mcts.path_queue.append(path, train_reward, valid_reward)
+            else:
+                warnings.warn(
+                    f"warm-start expression {expression!r} cannot be rebuilt as an "
+                    "operator path (op set / max_depth limits): it is kept as a "
+                    "candidate result but will not seed the genetic-programming pool.",
+                    UserWarning, stacklevel=3,
+                )
+
+    def _path_is_valid(self, path: List[str]) -> bool:
+        """Dry-run a path on a fresh tree to be sure the engine can build it."""
+        template = ExpTree(max_depth=self.max_depth,
+                           max_single_arity_ops=self.max_single_arity_ops,
+                           max_constants=self.max_constants,
+                           arity_dict=dict(self.arity_dict),
+                           complexity=dict(self.complexity),
+                           ops=list(self.ops))
+        try:
+            for op in path:
+                template.add_op(op)
+            return template.is_terminal()
+        except Exception:
+            return False
+
     def _maybe_save_intermediate(self, mcts: MCTS) -> None:
         """Save intermediate results to a JSON file if save_every is enabled."""
         if self.save_every <= 0 or not self.output_prefix:
@@ -365,7 +690,8 @@ class Regressor:
         except Exception as e:
             print(f"  [Final save failed] {e}")
         try:
-            save_checkpoint(checkpoint_file, mcts)
+            save_checkpoint(checkpoint_file, mcts,
+                            regressor_state=self.state_dict(mcts, outputs))
             print(f"  [Final checkpoint] {checkpoint_file}")
         except Exception as e:
             print(f"  [Final checkpoint failed] {e}")
