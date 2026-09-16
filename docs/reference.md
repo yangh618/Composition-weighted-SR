@@ -306,13 +306,46 @@ Parameters
 - `num_parallel`, `num_batches`, `num_trials` — parallel processes per MCTS
   batch, batch count, and NLopt restarts.
 - `optimization_method`, `lbfgs_upper_bound` — nlopt algorithm and box bound.
-- `seed`, `verbose`, `reward_func`, `output_prefix`, `save_every`,
-  `save_checkpoint_every`.
+- `seed`, `verbose`, `reward_func` — reproducibility, logging, custom reward.
+- **Persistence** — `output_prefix` is the path/prefix for run artifacts; without
+  it nothing is written *and* `save_every` / `save_checkpoint_every` have no effect
+  (a `UserWarning` is raised if they are requested without a prefix).
+  - `save_every=N` → `<output_prefix>_step<N>.json` (ranked results) every `N`
+    evaluated expressions;
+  - `save_checkpoint_every=N` → `<output_prefix>_ckpt_step<N>.json` (resumable
+    MCTS state) every `N` expressions;
+  - at the end of every run with a prefix: `<output_prefix>_final.json` (the
+    ranked results) and `<output_prefix>_ckpt_final.json` (the final MCTS state).
 
 Methods
 - `fit(seed=None, checkpoint=None)
   -> (simplified_expr, raw_expr, n_evaluations, path, outputs)` where
   `outputs` is a `list[dict]` ranked by valid MAE (best = `outputs[0]`).
+  `checkpoint` is an MCTS dict — resume with
+  `model.fit(checkpoint=load_checkpoint(path)["mcts"])`; `fit` also writes the
+  start- and end-of-run artifacts described above when `output_prefix` is set.
+
+```python
+from pathlib import Path
+from cwsr import Regressor
+from cwsr.checkpoint import load_checkpoint
+
+out = Path("results"); out.mkdir(parents=True, exist_ok=True)
+prefix = out / "density_run"
+
+model = Regressor(..., output_prefix=str(prefix),
+                  save_every=5000, save_checkpoint_every=5000)
+simplified, raw, n_evals, path, outputs = model.fit(seed=42)
+# results/density_run_final.json        <- the trained model (ranked outputs)
+# results/density_run_ckpt_final.json   <- resumable state
+
+resumed = load_checkpoint(f"{prefix}_ckpt_final.json")["mcts"]
+model.fit(seed=42, checkpoint=resumed)   # continues the search
+```
+(`cwsr.model.fit_dataset` / `train` set the prefix for you — they write
+`<output_dir>/cwsr_outputs_<dataset>_<ts>.json` plus the `_final` / `_ckpt_final`
+artifacts — so the JSON is directly consumable by `cwsr-query`,
+`analysis.inverse`, `analysis.pareto` and `analysis.bootstrap`.)
 - `build_MAE_loss(expr_str, X, Y) -> Callable` — objective over a parameter
   vector.
 - `optimize_weights(best_expr, is_positive_init) -> (mae, mae_valid, W)` —

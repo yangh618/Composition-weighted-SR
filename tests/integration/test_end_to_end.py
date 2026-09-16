@@ -88,6 +88,26 @@ def test_artifact_flows_into_query_and_inverse_design(fitted_run):
     assert prediction == pytest.approx(target, abs=1e-3)
 
 
+def test_every_training_run_is_persisted(fitted_run):
+    """``fit_dataset`` sets an ``output_prefix``, so the finished run is on disk.
+
+    Artifacts: ``cwsr_outputs_<name>_<ts>.json`` (the model, written by
+    ``cwsr.model.train``) plus ``…_final.json`` and ``…_ckpt_final.json``
+    (written by ``Regressor.fit``). The final checkpoint must be resumable.
+    """
+    from cwsr.checkpoint import load_checkpoint
+
+    names = {path.name for path in fitted_run.output_dir.iterdir()}
+    assert any(name.endswith("_final.json") for name in names), names
+    assert any(name.endswith("_ckpt_final.json") for name in names), names
+
+    checkpoint_file = next(path for path in fitted_run.output_dir.iterdir()
+                           if path.name.endswith("_ckpt_final.json"))
+    checkpoint = load_checkpoint(checkpoint_file)
+    assert checkpoint["mcts"]["count_num"] > 0
+    assert isinstance(checkpoint["mcts"]["tree"], list)
+
+
 def test_train_helper_writes_its_output_file(tmp_path):
     """``cwsr.model.train`` writes ``<prefix>.json`` (documented artifact name)."""
     from cwsr.data import split_dataset

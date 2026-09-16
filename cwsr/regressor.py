@@ -4,11 +4,40 @@ from sympy import sympify, expand, expand_log
 import time
 import random
 import json
+import warnings
 from cwsr.mcts import MCTS
 from cwsr.exp_tree import ExpTree
 from cwsr.reward import Optimizer
 from cwsr.gp import GPManager
 import gc
+
+
+def _warn_if_no_output_prefix(save_every: int,
+                              save_checkpoint_every: int,
+                              output_prefix: Optional[str]) -> None:
+    """Warn when the periodic-save flags cannot do anything.
+
+    ``save_every`` / ``save_checkpoint_every`` write ``<output_prefix>_step*.json``
+    and ``<output_prefix>_ckpt_step*.json`` files, so they need an
+    ``output_prefix``. Without one the saves are silently skipped otherwise,
+    which looks like the feature is broken.
+    """
+    if output_prefix:
+        return
+    requested = []
+    if save_every and save_every > 0:
+        requested.append(f"save_every={save_every}")
+    if save_checkpoint_every and save_checkpoint_every > 0:
+        requested.append(f"save_checkpoint_every={save_checkpoint_every}")
+    if requested:
+        warnings.warn(
+            f"{' and '.join(requested)} requested but output_prefix is not set: "
+            "no intermediate results or checkpoints will be written. Pass "
+            "output_prefix='<path/prefix>' (or use cwsr.model.fit_dataset, which "
+            "sets it) to persist them.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 def simplify_expression(exp_str: str, verbose: bool = False) -> str:
     """Simplify mathematical expression string without relying on class methods."""
@@ -63,6 +92,15 @@ class Regressor:
         x_train (np.ndarray): Training data features of shape (n_features, n_samples)
         y_train (np.ndarray): Training data labels of shape (n_samples,)
         seed (int, optional): Random seed for reproducibility
+        output_prefix (str, optional): Where to persist run artifacts. ``fit`` writes
+            ``<output_prefix>_final.json`` (ranked results) and
+            ``<output_prefix>_ckpt_final.json`` (resumable MCTS state) at the end of
+            every run, plus the periodic ``*_step<N>.json`` / ``*_ckpt_step<N>.json``
+            files when the two flags below are set. Without it nothing is written.
+        save_every (int, optional): Write ranked results every N evaluated
+            expressions (requires ``output_prefix``).
+        save_checkpoint_every (int, optional): Write a resumable MCTS checkpoint
+            every N evaluated expressions (requires ``output_prefix``).
         """
         # Input validation
         self._validate_inputs(x_train, y_train, max_depth)
@@ -135,11 +173,25 @@ class Regressor:
         self.exp_tree = self._create_exp_tree()
 
     def fit(self, seed: int = None, checkpoint: dict = None) -> Tuple[str, str, int, int, List[Dict]]:
-        """Perform symbolic regression search"""
+        """Perform symbolic regression search
+
+        Persistence (only when ``output_prefix`` is set):
+          * ``<output_prefix>_step<N>.json``      — ranked results every ``save_every`` expressions
+          * ``<output_prefix>_ckpt_step<N>.json`` — resumable MCTS state every ``save_checkpoint_every``
+          * ``<output_prefix>_final.json``        — the finished run's ranked results
+          * ``<output_prefix>_ckpt_final.json``   — the finished run's MCTS state (resume with
+            ``fit(checkpoint=load_checkpoint(path)["mcts"])``)
+
+        Without ``output_prefix`` nothing is written (a ``UserWarning`` is raised
+        if the save flags were requested).
+        """
         # Set random seed
         if seed is not None:
             np.random.seed(seed)
             random.seed(seed)
+
+        _warn_if_no_output_prefix(self.save_every, self.save_checkpoint_every,
+                                  self.output_prefix)
 
         with np.errstate(all='ignore'):
             mcts = self._create_mcts()
@@ -150,6 +202,7 @@ class Regressor:
             self.start_time = time.time()
             outputs = self.find_best(mcts)
             exp_str, _, _ = mcts.exp_queue.best()
+            self._save_final(mcts, outputs)
 
             return (
                 simplify_expression(exp_str, self.verbose),
@@ -291,6 +344,31 @@ class Regressor:
             print(f"  [Checkpoint save] {filename}")
         except Exception as e:
             print(f"  [Checkpoint save failed] {e}")
+
+    def _save_final(self, mcts: MCTS, outputs: List[Dict]) -> None:
+        """Persist the finished run: ranked results + a resumable checkpoint.
+
+        Reuses the ``outputs`` already produced by :meth:`find_best`, so no
+        additional weight optimisation is performed. No-op when
+        ``output_prefix`` is not set (see :func:`_warn_if_no_output_prefix`).
+        """
+        if not self.output_prefix:
+            return
+        from cwsr.checkpoint import save_checkpoint
+
+        results_file = f"{self.output_prefix}_final.json"
+        checkpoint_file = f"{self.output_prefix}_ckpt_final.json"
+        try:
+            with open(results_file, 'w') as f:
+                json.dump(outputs, f, indent=2)
+            print(f"  [Final save] {results_file}")
+        except Exception as e:
+            print(f"  [Final save failed] {e}")
+        try:
+            save_checkpoint(checkpoint_file, mcts)
+            print(f"  [Final checkpoint] {checkpoint_file}")
+        except Exception as e:
+            print(f"  [Final checkpoint failed] {e}")
 
     def save_status(self, mcts) -> List[Dict]:
         """Save and return the top 10 expressions with their optimized weights and metrics"""

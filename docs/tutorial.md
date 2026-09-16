@@ -177,6 +177,60 @@ Each element of `outputs` is a dict:
 
 These files are what the query / eval / bootstrap tooling consume.
 
+### (d) Saving the run, and resuming
+
+With the low-level `Regressor` **nothing is written to disk unless you set
+`output_prefix`** — and the periodic save flags only work together with it
+(asking for `save_every` without a prefix raises a `UserWarning`, because
+otherwise the run silently persists nothing):
+
+```python
+from pathlib import Path
+import json
+from cwsr import Regressor
+from cwsr.checkpoint import load_checkpoint
+
+out = Path("results"); out.mkdir(parents=True, exist_ok=True)
+prefix = out / "density_run"
+
+model = Regressor(
+    x_train=X[tr], y_train=y[tr], x_valid=X[va], y_valid=y[va],
+    var_count=3, ops=["mul", "sub", "add", "div", "sqrt", "exp", "log", "R"],
+    max_expressions=10000, output_prefix=str(prefix),   # <-- persistence
+    save_every=5000, save_checkpoint_every=5000,
+)
+simplified, raw, n_evals, path, outputs = model.fit(seed=42)
+```
+
+Files produced:
+
+| File | Content |
+|---|---|
+| `<prefix>_step<N>.json` | ranked results every `save_every` expressions |
+| `<prefix>_ckpt_step<N>.json` | resumable MCTS state every `save_checkpoint_every` expressions |
+| `<prefix>_final.json` | the finished run's ranked results (**the model**) |
+| `<prefix>_ckpt_final.json` | the finished run's MCTS state |
+
+Resuming continues the search from the stored state:
+
+```python
+checkpoint = load_checkpoint(f"{prefix}_ckpt_final.json")["mcts"]
+model.fit(seed=42, checkpoint=checkpoint)     # prints "[Checkpoint] Resumed MCTS from N evaluations"
+```
+
+The high-level driver does all of this for you (it sets the prefix, so `_step`,
+`_ckpt_step` and `_final` files land next to the run's outputs JSON):
+
+```python
+from cwsr.model import fit_dataset
+outputs = fit_dataset(ds, output_dir="results", seed=42,
+                      var_count=3, max_expressions=10000,
+                      save_every=5000, save_checkpoint_every=5000)
+# results/cwsr_outputs_<dataset>_<ts>.json          <- the model (consumed below)
+# results/cwsr_outputs_<dataset>_<ts>_final.json    <- same ranked results
+# results/cwsr_outputs_<dataset>_<ts>_ckpt_final.json
+```
+
 ---
 
 ## 4. Using a trained model (prediction)
