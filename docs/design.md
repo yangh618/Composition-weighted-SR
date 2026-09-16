@@ -43,6 +43,11 @@ datasets/              concrete databases + dispatch (separate top-level package
   alloy.py             alloy .npz provider (bundled data under alloys/data/)
   alloys/data/*.npz    bundled example alloy databases (no download needed)
   registry.py          name/path -> provider dispatch ("works for any task")
+analysis/              post-training analysis (top-level package, lazy submodules)
+  _common.py           shared helpers (results loading, element indices, JSON)
+  inverse.py           target / weighted-sum / Tchebycheff composition design
+  pareto.py            Pareto front via Tchebycheff scalarization sweep
+  bootstrap.py         bootstrap resampling UQ + refined-results export
 scripts/               legacy command-line executables (examples, not installed)
   run_cwsr.py          Matbench CLI runner (engine-level, legacy)
   eval.py              Matbench eval + NLopt weight refinement (legacy)
@@ -85,11 +90,11 @@ The generic container itself lives in the framework core (`cwsr/data.py`);
 |---|---|---|
 | `forward.py` | `cwsr/predict/forward.py` | ported, generalized (no alloy paths) |
 | `query.py` | `cwsr/predict/query.py` | ported, generalized (results-path based) |
-| `inverse.py` | `cwsr/design/inverse.py` | port, generalize refined-results loading |
-| `pareto.py` | `cwsr/design/pareto.py` | port, generalize |
-| `bootstrap_utils.py` | `cwsr/validate/bootstrap.py` | port, generalize |
-| `bootstrap_parity.py` | `cwsr/validate/bootstrap.py` | port, generalize |
-| `use_bootstrap_best.py` | `cwsr/validate/bootstrap.py` | port, generalize |
+| `inverse.py` | `analysis/inverse.py` | **ported**; expressions from any results JSON, elements by number/symbol |
+| `pareto.py` | `analysis/pareto.py` | **ported**; Tchebycheff sweep + non-dominated filter |
+| `bootstrap_utils.py` | `analysis/bootstrap.py` | **ported**; element-safe resampling, CIs, metrics |
+| `bootstrap_parity.py` | `analysis/bootstrap.py` (CLI) | **replaced** by a task-agnostic bootstrap CLI; parity plots deferred to the plotting phase |
+| `use_bootstrap_best.py` | `analysis/bootstrap.py` | **ported** as `write_refined_results` (refined-results export) |
 | `cwsr_alloys.py` | `examples/alloys/` + `cwsr/model/train.py` | training now task-agnostic; example registers alloy npz |
 | `eval.py` / `visiualize.py` | `cwsr/evaluate/`, `cwsr/plotting/` | unify; legacy copies kept as `scripts/` examples |
 | `preprocess.py`, `verify_data.py` | `examples/alloys/preprocess/` | example-local (data-specific) |
@@ -106,9 +111,14 @@ The generic container itself lives in the framework core (`cwsr/data.py`);
    with `python -c "import cwsr..."` and `py_compile`.
 2. **Phase 2:** `cwsr/model/train.py` unified training CLI + Matbench/alloy
    runners; reconcile the two `eval.py` forks into `cwsr/evaluate/eval.py`.
-3. **Phase 3:** port + generalize `design/inverse.py` and `design/pareto.py`.
-4. **Phase 4:** port + generalize `validate/bootstrap.py` (bootstrap_utils +
-   bootstrap_parity + use_bootstrap_best) and `evaluate/metrics.py`.
+3. **Phase 3 (done):** `analysis/inverse.py` + `analysis/pareto.py` ported and
+   generalized (accepted expressions come from any results JSON, elements may
+   be symbols or atomic numbers, I/O is dataset-agnostic).
+4. **Phase 4 (done for bootstrap UQ):** `analysis/bootstrap.py` ports
+   `bootstrap_utils` + `use_bootstrap_best` (element-safe resampling, NLopt
+   weight re-optimisation, CIs, metrics, refined-results export). The
+   parity-plot driver (`bootstrap_parity.py`) and `evaluate/metrics.py` remain
+   with the plotting phase.
 5. **Phase 5:** `cwsr/plotting/` (parity, Pareto, periodic-table, element
    plots) and migrate `visiualize.py`.
 6. **Phase 6:** full `cwsr` CLI (`cwsr train/eval/query/inverse/pareto/

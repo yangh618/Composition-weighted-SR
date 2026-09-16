@@ -27,8 +27,9 @@ modules in the package root:
 
 Framework subpackages: `cwsr.formula`, `cwsr.data` (dataset schema + splits),
 `cwsr.model`, `cwsr.predict` (`forward`, `query`), `cwsr.plotting`
-(`periodic_table`, `gallery`), and the top-level `datasets` package
-(`matbench`, `alloy`, `registry`).
+(`periodic_table`, `gallery`), and the top-level `datasets` (concrete database
+providers + registry) and `analysis` (inverse design, Pareto, bootstrap UQ)
+packages.
 
 ---
 
@@ -305,13 +306,88 @@ Parameters
 - `num_parallel`, `num_batches`, `num_trials` — parallel processes per MCTS
   batch, batch count, and NLopt restarts.
 - `optimization_method`, `lbfgs_upper_bound` — nlopt algorithm and box bound.
-- `seed`, `verbose`, `reward_func`, `output_prefix`, `save_every`,
-  `save_checkpoint_every`.
+- `seed`, `verbose`, `reward_func` — reproducibility, logging, custom reward.
+- **Persistence** — `output_prefix` is the path/prefix for run artifacts; without
+  it nothing is written *and* `save_every` / `save_checkpoint_every` have no effect
+  (a `UserWarning` is raised if they are requested without a prefix).
+  - `save_every=N` → `<output_prefix>_step<N>.json` (ranked results) every `N`
+    evaluated expressions;
+  - `save_checkpoint_every=N` → `<output_prefix>_ckpt_step<N>.json` (resumable
+    MCTS state) every `N` expressions;
+  - at the end of every run with a prefix: `<output_prefix>_final.json` (the
+    ranked results) and `<output_prefix>_ckpt_final.json` (the final MCTS state).
 
 Methods
 - `fit(seed=None, checkpoint=None)
   -> (simplified_expr, raw_expr, n_evaluations, path, outputs)` where
   `outputs` is a `list[dict]` ranked by valid MAE (best = `outputs[0]`).
+  `checkpoint` is an MCTS dict — resume with
+  `model.fit(checkpoint=load_checkpoint(path)["mcts"])`; `fit` also writes the
+  start- and end-of-run artifacts described above when `output_prefix` is set.
+
+```python
+from pathlib import Path
+from cwsr import Regressor
+from cwsr.checkpoint import load_checkpoint
+
+out = Path("results"); out.mkdir(parents=True, exist_ok=True)
+prefix = out / "density_run"
+
+model = Regressor(..., output_prefix=str(prefix),
+                  save_every=5000, save_checkpoint_every=5000)
+simplified, raw, n_evals, path, outputs = model.fit(seed=42)
+# results/density_run_final.json        <- the trained model (ranked outputs)
+# results/density_run_ckpt_final.json   <- resumable state
+
+resumed = load_checkpoint(f"{prefix}_ckpt_final.json")["mcts"]
+model.fit(seed=42, checkpoint=resumed)   # continues the search
+```
+(`cwsr.model.fit_dataset` / `train` set the prefix for you — they write
+`<output_dir>/cwsr_outputs_<dataset>_<ts>.json` plus the `_final` / `_ckpt_final`
+artifacts — so the JSON is directly consumable by `cwsr-query`,
+`analysis.inverse`, `analysis.pareto` and `analysis.bootstrap`.)
+
+### 6.1a Loading & restarting a saved run
+
+| API | Purpose |
+|---|---|
+| `state_dict(mcts=None, outputs=None) -> dict` | serializable run description: `config` (all constructor settings), `data` (train/valid arrays), `results`, `meta` (provenance + counters). |
+| `Regressor.from_state(state, **overrides)` | rebuild a `Regressor` from a state dict; `overrides` replace settings (`max_expressions=`, `output_prefix=`, `reward_func=`, or new `x_train=`/`y_train=`). |
+| `Regressor.load(path_or_dict, **overrides)` | load a checkpoint written by `fit` (file or parsed dict); returns the rebuilt model with `.checkpoint` and `.results` attached. |
+| `Regressor.resume(path, seed=None, **overrides)` | `load` + continue the search; returns the same tuple as `fit`. |
+| `Regressor.from_results(path, x_train, y_train[, x_valid, y_valid], warm_start_top_n=3, **overrides)` | rebuild from a results-only JSON (the saved *model*) and warm-start a new search. |
+
+The final checkpoint is **self-describing**: `{"mcts": …, "regressor": state_dict}`
+— so one file is enough to rebuild the model (config + data) *and* resume the
+search:
+
+```python
+from cwsr import Regressor
+
+# continue a run (same data, same hyperparameters, more budget)
+simplified, raw, n_evals, path, outputs = Regressor.resume(
+    "results/density_run_ckpt_final.json", seed=42, max_expressions=20000,
+    output_prefix="results/density_run2")
+
+# or step by step, with full control
+model = Regressor.load("results/density_run_ckpt_final.json")
+model.fit(seed=42, checkpoint=model.checkpoint)
+
+# restart from a saved model on (possibly) new data, keeping the old champions
+model = Regressor.from_results("results/density_run_final.json",
+                               x_train=X, y_train=y, x_valid=Xv, y_valid=yv,
+                               var_count=3, max_expressions=20000)
+model.fit(seed=42)      # prints "[Warm start] Seeded N expression(s) / M path(s)"
+```
+
+Warm-start semantics: the loaded expressions are queued as evaluated candidates
+(so they appear in the new ranking and are never lost), and — when their
+operator shape can be rebuilt inside `max_depth` and the current op set — their
+paths also seed the genetic-programming pool, so mutation/crossover start from
+the previous law. Expressions whose shape cannot be rebuilt (e.g. a literal
+constant when the op set has no `R` token) raise a `UserWarning` and are kept as
+candidates only. `reward_func` is not serializable — pass it again if the
+original run used one.
 - `build_MAE_loss(expr_str, X, Y) -> Callable` — objective over a parameter
   vector.
 - `optimize_weights(best_expr, is_positive_init) -> (mae, mae_valid, W)` —
@@ -431,7 +507,7 @@ Reads a JSON manifest of entries and, per entry, renders a parity plot
 (predicted vs. reference) and a periodic-table coefficient map, then writes the
 Markdown page plus PNGs under `<page_dir>/assets/gallery/`. Add a result by
 appending an entry to the manifest and re-running the command — the page grows
-gradually. CLI: `cwsr-gallery` (see §8).
+gradually. CLI: `cwsr-gallery` (see §9).
 
 Manifest entry fields: `id`, `title`, `dataset` (+ `dataset_kwargs`), `results`
 (path to a `cwsr_outputs_*.json`), `rank`, optional `split_ratio`/`seed` (to
@@ -439,12 +515,109 @@ colour train/valid points), `notes`, `tags`.
 
 ---
 
-## 8. Console entry points
+## 8. `analysis` — inverse design, Pareto fronts, bootstrap UQ
+
+Task-agnostic post-training analysis. Every entry point consumes the same
+artifacts as the rest of the framework (`cwsr_outputs_*.json` / refined-results
+JSON) plus a dataset name or `.npz` path resolved by `datasets.get_dataset`.
+Submodules are imported lazily (they pull in scipy/joblib), so
+`import analysis` stays cheap.
+
+### 8.1 `analysis._common` — shared helpers
+
+- `load_expression_from_results(results_path, index=0) -> (expression, weights)`
+  — accepts a ranked outputs list or a single output dict.
+- `load_expression_specs([(name, path), ...], index=0) -> list[dict]`
+- `resolve_active_indices(elements=None) -> np.ndarray` — atomic numbers,
+  chemical symbols, mixed lists, or `None` (= all 118).
+- `describe_elements(indices) -> str`, `present_elements(compositions) -> np.ndarray`
+- `save_json(path, payload) -> Path`
+
+### 8.2 `analysis.inverse` — composition design
+
+- `optimize_target(weights, expression_func, target, grad_funcs=None,
+  active_elements=None, n_trials=10, method="L-BFGS-B", verbose=False)
+  -> (composition, prediction, error)` — hit a target property value.
+- `optimize_weighted_sum(element_weights_list, expression_funcs,
+  grad_funcs_list, obj_weights, active_indices, n_multistart=10, seed=None,
+  verbose=False) -> (composition, values)` — positive weight = maximize,
+  negative = minimize.
+- `optimize_tchebycheff(...)` — augmented weighted Tchebycheff scalarization
+  for non-convex fronts; `scalar_weights` selects the front region (used for
+  sweeping).
+
+```python
+from analysis._common import load_expression_from_results
+from analysis.inverse import optimize_target
+from cwsr.predict import compile_expression, compile_gradient_functions
+
+expression, W = load_expression_from_results("results/cwsr_outputs_density.json")
+f = compile_expression(expression, W.shape[0])
+g = compile_gradient_functions(expression, W.shape[0])
+comp, pred, err = optimize_target(W, f, target=7.5, grad_funcs=g,
+                                  active_elements=["Fe", "Cr", "Co", "Ni"])
+```
+
+CLI: `cwsr-inverse` / `python -m analysis.inverse` — `--refined_results
+name:path` (repeatable), `--target` or `--obj_weights`, `--elements`,
+`--trials`, `--expr_idx`, `--output`.
+
+### 8.3 `analysis.pareto` — Pareto front
+
+- `compute_pareto_front_analytical(element_weights_list, expression_funcs,
+  grad_funcs_list, obj_weights, active_indices, n_pareto_points=100,
+  seed=None, n_multistart=10, verbose=True) -> (compositions, values)`
+  — sweeps Tchebycheff scalarizations across the simplex (a 2-objective sweep
+  for `n_obj == 2`, Dirichlet samples beyond), dedupes the optima and keeps
+  only the non-dominated points: `compositions` is `(m, 118)` and `values`
+  `(m, n_obj)`.
+
+CLI: `cwsr-pareto` / `python -m analysis.pareto` — `--refined_results` (twice
+or more), `--obj_weights`, `--n_pareto_points`, `--trials`, `--elements`,
+`--threshold`, `--output` (writes a ranked `pareto_front` JSON with per-point
+formulas and property values).
+
+### 8.4 `analysis.bootstrap` — uncertainty quantification
+
+- `bootstrap_resample(x_train, y_train, x_test, y_test, expression,
+  weights_original, var_count, n_bootstrap=200, random_seed=None,
+  num_trials=5, n_jobs=1) -> (y_pred_all_train, y_pred_all_test, weights_all,
+  success_mask)` — resamples the training set with element-safe splits and
+  re-optimises the weights on each resample via NLopt (warm start from
+  `weights_original`), returning per-resample predictions/weights.
+- `compute_confidence_intervals(y_pred_all, ci_level=95)
+  -> (mean, std, ci_lower, ci_upper)`
+- `compute_bootstrap_metrics(y_true, y_pred_all, ci_level=95) -> dict` — MAE,
+  RMSE and R² means/stds/CIs plus `n_successful`.
+- `run_bootstrap(...) -> dict` — orchestrates the above and returns metrics for
+  the training and evaluation pools with prediction statistics.
+- `load_top_expressions(results_path, top_n=3) -> list` — top-N candidates from
+  a results JSON.
+- `write_refined_results(bootstrap_result, output_path) -> Path` — exports the
+  bootstrap-best expression as a one-entry refined-results JSON consumable by
+  `cwsr-query`, `analysis.inverse` and `analysis.pareto`.
+
+CLI: `cwsr-bootstrap` / `python -m analysis.bootstrap` — `--dataset`,
+`--results`, `--expr_idx`, `--n_bootstrap`, `--num_trials`, `--jobs`,
+`--ci_level`, `--split_ratio`, `--output`, `--refined_output`.
+
+```bash
+python -m analysis.bootstrap --dataset alloy_density \
+    --results gallery/results/alloy_density/cwsr_outputs_*.json \
+    --n_bootstrap 50 --jobs 4 --refined_output results/refined_results_density.json
+```
+
+---
+
+## 9. Console entry points
 
 | Command | Module |
 |---|---|
 | `cwsr-query` | `cwsr.predict.query` |
 | `cwsr-gallery` | `cwsr.plotting.gallery` |
+| `cwsr-inverse` | `analysis.inverse` |
+| `cwsr-pareto` | `analysis.pareto` |
+| `cwsr-bootstrap` | `analysis.bootstrap` |
 
 The legacy Matbench runners are **not** installed entry points; they live in
 `scripts/` as runnable examples (`python scripts/run_cwsr.py …`,
@@ -459,7 +632,7 @@ cwsr-gallery --manifest gallery/manifest.json --page docs/gallery.md
 
 ---
 
-## 9. Conventions & notes
+## 10. Conventions & notes
 
 - **Shapes**: compositions `(n, 118)`; weights `(var_count, 118)`;
   expression functions accept `(n, var_count) -> (n,)`.

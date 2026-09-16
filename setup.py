@@ -53,6 +53,8 @@ setup(
     # Packages
     # -----------------------------------------------------------------------
     packages=find_packages(include=[
+        "analysis",
+        "analysis.*",
         "cwsr",
         "cwsr.*",
         "datasets",
@@ -70,12 +72,21 @@ setup(
     install_requires=parse_requirements("requirements.txt") + extra_deps,
     python_requires=">=3.10",
     # -----------------------------------------------------------------------
+    # Optional development / test dependencies
+    # -----------------------------------------------------------------------
+    extras_require={
+        "test": ["pytest>=7"],
+    },
+    # -----------------------------------------------------------------------
     # CLI entry points
     # -----------------------------------------------------------------------
     entry_points={
         "console_scripts": [
             "cwsr-query=cwsr.predict.query:main",
             "cwsr-gallery=cwsr.plotting.gallery:main",
+            "cwsr-inverse=analysis.inverse:main",
+            "cwsr-pareto=analysis.pareto:main",
+            "cwsr-bootstrap=analysis.bootstrap:main",
         ],
     },
     # -----------------------------------------------------------------------

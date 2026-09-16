@@ -22,6 +22,10 @@ y = f(W @ comp)
 ## Key features
 
 - **MCTS-driven symbolic regression** engine (`cwsr.Regressor`, `cwsr.mcts`, …)
+- **Post-training analysis** (`analysis`): composition design (target,
+  weighted-sum, augmented weighted Tchebycheff), multi-objective **Pareto
+  fronts**, and **bootstrap** uncertainty quantification with confidence
+  intervals
 - **Task-agnostic datasets**: Matbench, alloy `.npz` databases, or any custom
   composition dataset via `datasets.get_dataset(...)`
 - Element-safe train/valid splits (every element in the data stays in training)
@@ -105,13 +109,16 @@ cwsr/            engine (regressor, mcts, gp, exp_tree, exp_queue, reward,
                  splits; model, predict, formula, plotting)
 datasets/        concrete data providers (matbench, alloy), provider registry,
                  and the bundled alloy databases (datasets/alloys/data)
+analysis/        inverse design (analysis.inverse), Pareto fronts
+                 (analysis.pareto), bootstrap UQ (analysis.bootstrap) +
+                 shared helpers (analysis._common)
 gallery/         results manifest (manifest.json) consumed by cwsr-gallery
 docs/            tutorial.md, reference.md, design.md, gallery.md
                  (+ MkDocs site config)
 mkdocs.yml       documentation site configuration
 scripts/         legacy Matbench CLI/eval runners + shell drivers (examples)
 examples/        example scripts (not committed)
-tests/           smoke + sanity tests (maintained on the develop branch)
+tests/           pytest suite (unit + integration) — see TESTING.md
 ```
 
 ## Supported & extensible datasets

@@ -164,12 +164,42 @@ def predict_vector_and_gradients(compositions: np.ndarray,
 # =========================================================================
 # Composition parameterisation helpers (for constrained optimisation)
 # =========================================================================
-def _get_active_indices(elements) -> np.ndarray:
-    """Map 1-based atomic numbers (``--elements 22 23 ...``) to 0-based columns."""
-    arr = np.atleast_1d(np.asarray(elements, dtype=int))
-    if arr.ndim != 1:
-        raise ValueError("elements must be a flat list of atomic numbers")
-    return arr - 1
+def _parse_elements(elements) -> np.ndarray:
+    """Map element identifiers (atomic numbers or symbols) to 0-based columns.
+
+    Entries may be 1-based atomic numbers (``22``) or chemical symbols
+    (``"Ti"``, ``"ti"``); mixed lists are allowed.
+    """
+    indices = []
+    for elem in np.atleast_1d(np.asarray(elements, dtype=object)).ravel():
+        if isinstance(elem, str):
+            symbol = elem.strip().capitalize()
+            if symbol not in ELEMENT_SYMBOLS:
+                raise ValueError(f"Unknown element symbol: '{elem}'")
+            indices.append(ELEMENT_SYMBOLS.index(symbol))
+        else:
+            z = int(elem)
+            if not 1 <= z <= 118:
+                raise ValueError(f"Invalid atomic number: {z} (must be 1-118)")
+            indices.append(z - 1)
+    return np.asarray(indices, dtype=int)
+
+
+def _get_active_indices(elements=None) -> np.ndarray:
+    """Columns to optimize over: all 118, or the ones named by ``elements``.
+
+    ``elements`` accepts 1-based atomic numbers (``22``) or chemical symbols
+    (``"Ti"``) — the format of the ``--elements`` option of the analysis CLIs.
+    ``None`` means "all 118 elements".
+    """
+    if elements is None:
+        return np.arange(118, dtype=int)
+
+    indices = _parse_elements(elements)
+    indices = indices[(indices >= 0) & (indices < 118)]
+    if indices.size == 0:
+        raise ValueError("No valid active elements specified.")
+    return indices
 
 
 def _build_composition(comp_flat: np.ndarray,
