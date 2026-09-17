@@ -211,12 +211,11 @@ def test_seed_from_warm_start_populates_both_queues(tmp_path):
 
     assert len(mcts.exp_queue) == 1 and len(mcts.path_queue) == 1
     assert mcts.path_queue.best()[0] == ["mul", "R", "x0"]
-    # loaded champions are scored with the *current* ranking criterion (the
-    # train/valid mix), not with the validation reward alone
+    # loaded champions are scored with the *current* ranking criterion (α = 1.0 by
+    # default, i.e. the validation reward; see test_reward_mixing.py for the mix)
     expected = combine_rewards(entry["train_reward"], entry["valid_reward"],
                                model.valid_reward_weight)
     assert mcts.best_reward == pytest.approx(expected)
-    assert mcts.best_reward != pytest.approx(entry["valid_reward"])
 
 
 def test_warm_start_warns_when_the_path_cannot_be_rebuilt(tmp_path):

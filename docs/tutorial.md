@@ -177,12 +177,12 @@ Each element of `outputs` is a dict:
 
 These files are what the query / eval / bootstrap tooling consume.
 
-`rank` follows the search score, which mixes the two rewards:
-`Regressor(valid_reward_weight=α)` (default `0.5`) ranks candidates by
-`α·valid_reward + (1−α)·train_reward` — set α = `1.0` for the original
-"validation only" behaviour, `0.0` to search on the training reward alone. The
-`mae`/`mae_valid` values are re-fitted after the search finishes, so they are not
-necessarily monotone in `rank`: pick the model on the metric you care about
+`rank` follows the search score, which is the validation reward by default:
+`Regressor(valid_reward_weight=α)` with α = `1.0` (default) ranks candidates by the
+**validation** error alone, α = `0.5` blends in the training reward equally
+(`α·valid_reward + (1−α)·train_reward`), α = `0.0` uses the training reward only.
+The `mae`/`mae_valid` values are re-fitted after the search finishes, so they are
+not necessarily monotone in `rank`: pick the model on the metric you care about
 (`min(outputs, key=lambda e: e["mae_valid"])`) rather than on `outputs[0]` alone.
 The progress report prints the combined score together with the α in use.
 

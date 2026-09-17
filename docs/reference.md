@@ -278,7 +278,8 @@ model = Regressor(
     lbfgs_upper_bound=47.0,
     num_trials=1,
     # --- reward (ranking criterion) ---
-    valid_reward_weight=0.5,               # alpha: valid vs train reward mix
+    valid_reward_weight=1.0,               # alpha: valid vs train reward mix
+                                           # 1.0 = validation reward only (default)
     # --- parallelism ---
     num_parallel=4,
     num_batches=16,
@@ -308,15 +309,17 @@ Parameters
 - `num_parallel`, `num_batches`, `num_trials` — parallel processes per MCTS
   batch, batch count, and NLopt restarts.
 - `optimization_method`, `lbfgs_upper_bound` — nlopt algorithm and box bound.
-- `valid_reward_weight` (α, default `0.5`) — the search ranks candidates by the
+- `valid_reward_weight` (α, default `1.0`) — the search ranks candidates by the
   **mixed reward** `α·valid_reward + (1−α)·train_reward` (see
   `cwsr.exp_queue.combine_rewards`). It drives the expression/path queues, the
   within-batch trial selection, tree backpropagation and the "solved" criterion.
-  `1.0` = original CWSR behaviour (validation reward only), `0.0` = training
-  reward only; clipped to `[0, 1]`. Both raw rewards are still recorded in the
-  results, and the progress report prints the combined score with the current α.
-  Prefer a mix when the validation split is small/noisy; use `1.0` for a strict
-  generalisation-driven search.
+  The default `1.0` keeps the original CWSR behaviour — candidates are selected
+  purely on the **validation** error (full validation MAE), which is the strict
+  generalisation-driven criterion. `0.5` blends train and validation equally and
+  `0.0` uses the training reward only; the weight is clipped to `[0, 1]`. Opt into
+  a mix when the validation split is small or noisy. Both raw rewards are still
+  recorded in the results, and the progress report prints the combined score with
+  the current α.
 - `seed`, `verbose`, `reward_func` — reproducibility, logging, custom reward.
 - **Persistence** — `output_prefix` is the path/prefix for run artifacts; without
   it nothing is written *and* `save_every` / `save_checkpoint_every` have no effect

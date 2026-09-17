@@ -2,10 +2,10 @@
 
 ``Regressor(valid_reward_weight=α)`` makes the search optimise
 ``α · valid_reward + (1 − α) · train_reward`` instead of ranking by the validation
-reward alone (``α = 1``, the original CWSR behaviour). The coefficient drives the
-expression/path queues, the within-batch trial selection, the tree
-backpropagation and the "solved" criterion; both raw rewards stay in the results
-so reporting is unchanged.
+reward alone (``α = 1``, the original CWSR behaviour **and the shipped default** —
+mixing is opt-in). The coefficient drives the expression/path queues, the
+within-batch trial selection, the tree backpropagation and the "solved" criterion;
+both raw rewards stay in the results so reporting is unchanged.
 """
 
 from __future__ import annotations
@@ -36,12 +36,23 @@ def _fit(alpha, *, max_expressions=4, seed=0, n=24):
 # ---------------------------------------------------------------------------
 # The knob itself
 # ---------------------------------------------------------------------------
-def test_default_is_an_equal_mix():
-    assert DEFAULT_VALID_REWARD_WEIGHT == 0.5
+def test_default_ranks_by_the_validation_reward_alone():
+    """The shipped default is "full validation MAE": α = 1.0 (mixing is opt-in)."""
+    assert DEFAULT_VALID_REWARD_WEIGHT == 1.0
+
     X, y, _ = S.tiny_linear_problem(n=12)
     model = Regressor(x_train=X, y_train=y, x_valid=X, y_valid=y, **TINY)
 
-    assert model.valid_reward_weight == 0.5
+    assert model.valid_reward_weight == 1.0
+    mcts = model._create_mcts()
+    assert mcts.valid_reward_weight == 1.0
+    assert mcts.exp_queue.valid_weight == 1.0
+    # ... so the score *is* the validation reward, i.e. valid MAE alone decides
+    assert mcts.score(0.9, 0.2) == pytest.approx(0.2)
+    # and the mix is an explicit opt-in
+    mixed = Regressor(x_train=X, y_train=y, x_valid=X, y_valid=y,
+                      valid_reward_weight=0.5, **TINY)
+    assert mixed._create_mcts().score(0.9, 0.2) == pytest.approx(0.55)
 
 
 @pytest.mark.parametrize("given, expected", [(1.0, 1.0), (0.0, 0.0), (0.25, 0.25),
@@ -109,6 +120,26 @@ def test_trial_selection_uses_the_mixed_score():
     assert valid_best[0] == "valid_best" and valid_best[2] == pytest.approx(0.9)
     # at the midpoint both trials score 0.55, so the first one keeps the slot
     assert mixed[0] == "train_best"
+
+
+def test_warm_start_champions_are_scored_with_the_current_criterion():
+    """Loaded results are re-scored with the α in force, not with their raw valid reward."""
+    X, y, _ = S.tiny_linear_problem(n=6)
+    entry = {"expression": "0.5*x0", "train_reward": 0.4, "valid_reward": 0.45}
+
+    def best_reward(alpha):
+        model = Regressor(x_train=X, y_train=y, warm_start=[entry],
+                          valid_reward_weight=alpha,
+                          **{**TINY, "ops": ["add", "mul", "R"]})
+        mcts = model._create_mcts()
+        model._seed_from_warm_start(mcts)
+        return mcts.best_reward
+
+    # default (α = 1.0): the validation reward decides, so the mixed score *is* 0.45
+    assert best_reward(1.0) == pytest.approx(0.45)
+    # explicit blend: 0.5 * 0.45 + 0.5 * 0.4
+    assert best_reward(0.5) == pytest.approx(0.425)
+    assert best_reward(0.0) == pytest.approx(0.4)
 
 
 def test_ranked_results_keep_both_raw_rewards():

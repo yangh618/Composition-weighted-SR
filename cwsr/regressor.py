@@ -7,6 +7,7 @@ import json
 import warnings
 from cwsr.mcts import MCTS
 from cwsr.exp_tree import ExpTree
+from cwsr.exp_queue import DEFAULT_VALID_REWARD_WEIGHT
 from cwsr.reward import Optimizer
 from cwsr.gp import GPManager
 import gc
@@ -29,11 +30,11 @@ _STATE_CONFIG_KEYS = ("var_count", "ops", "max_depth", "K", "c", "gamma",
                       "verbose", "save_every", "save_checkpoint_every",
                       "output_prefix")
 
-#: Default weight of the validation reward in the combined search score.
-#: ``0.5`` mixes training and validation equally; set ``1.0`` for the original
-#: CWSR behaviour (rank candidates by ``valid_reward`` alone) or ``0.0`` to train
-#: purely on the training reward.
-DEFAULT_VALID_REWARD_WEIGHT: float = 0.5
+#: Default weight of the validation reward in the combined search score
+#: (:data:`cwsr.exp_queue.DEFAULT_VALID_REWARD_WEIGHT`): ``1.0`` ranks candidates
+#: by the validation reward alone (the original CWSR behaviour, and the default).
+#: Mixing in the training reward is opt-in — ``valid_reward_weight=0.5`` for an
+#: equal blend, ``0.0`` for the training reward only.
 
 
 def _is_variable(op: str) -> bool:
@@ -195,10 +196,11 @@ class Regressor:
             reward in the combined search score
             ``α · valid_reward + (1 − α) · train_reward`` used to rank candidates
             (queues, trial selection, tree backpropagation and the success
-            criterion). ``1.0`` = the original CWSR behaviour (validation only),
-            ``0.0`` = training reward only, ``0.5`` (default) = equal mix. Clipped
-            to ``[0, 1]``. Use the mix when the validation split is small or
-            noisy; keep ``1.0`` for a strict generalisation-driven search.
+            criterion). Default ``1.0`` = rank by the **validation** reward alone
+            (the original CWSR behaviour, i.e. full validation MAE); ``0.5``
+            blends train and validation equally, ``0.0`` uses the training reward
+            only. Clipped to ``[0, 1]``. Opt into the mix when the validation
+            split is small or noisy.
         output_prefix (str, optional): Where to persist run artifacts. ``fit`` writes
             ``<output_prefix>_final.json`` (ranked results) and
             ``<output_prefix>_ckpt_final.json`` (resumable MCTS state) at the end of
