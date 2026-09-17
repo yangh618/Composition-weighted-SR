@@ -207,15 +207,24 @@ Files produced:
 | File | Content |
 |---|---|
 | `<prefix>_step<N>.json` | ranked results every `save_every` expressions |
-| `<prefix>_ckpt_step<N>.json` | resumable MCTS state every `save_checkpoint_every` expressions |
+| `<prefix>_ckpt_step<N>.json` | resumable checkpoint every `save_checkpoint_every` expressions: MCTS state **plus** the full run state (hyperparameters, training data, provenance) |
 | `<prefix>_final.json` | the finished run's ranked results (**the model**) |
-| `<prefix>_ckpt_final.json` | the finished run's MCTS state |
+| `<prefix>_ckpt_final.json` | the finished run's MCTS state **plus** the full run state (including the ranked results) |
 
-Resuming continues the search from the stored state:
+Both checkpoint flavours are self-describing: the `regressor` key holds the
+hyperparameters (`config`), the exact training data (`data`), the ranked results
+(`results`, only in the final checkpoint) and provenance (`meta`, including
+`count_num`, so you can see where the run stopped). Resuming continues the search
+from the stored state — from **either** flavour, e.g. after a crash you can pick
+up the last periodic checkpoint:
 
 ```python
 checkpoint = load_checkpoint(f"{prefix}_ckpt_final.json")["mcts"]
 model.fit(seed=42, checkpoint=checkpoint)     # prints "[Checkpoint] Resumed MCTS from N evaluations"
+
+# or rebuild the whole model (hyperparameters included) and continue from a step file
+model = Regressor.resume(f"{prefix}_ckpt_step5000.json", seed=42,
+                         max_expressions=50000)      # override only what you change
 ```
 
 The high-level driver does all of this for you (it sets the prefix, so `_step`,
@@ -233,9 +242,10 @@ outputs = fit_dataset(ds, output_dir="results", seed=42,
 
 ### (e) Loading a saved run and restarting
 
-The final checkpoint is **self-describing** (MCTS state + the full run state:
-hyperparameters, the training data, the results and provenance like the dataset
-name), so a single file is enough to rebuild the model and continue:
+Checkpoints are **self-describing** (MCTS state + the full run state:
+hyperparameters, the training data and provenance like the dataset name; the
+final one also carries the ranked results), so a single file — periodic or final
+— is enough to rebuild the model and continue:
 
 ```python
 from cwsr import Regressor
@@ -252,6 +262,9 @@ model = Regressor.load("results/density_run_ckpt_final.json")
 print(model.var_count, model.run_meta)               # rebuilt from the file
 model.fit(seed=42, checkpoint=model.checkpoint)
 ```
+
+(The same calls work with a periodic `_ckpt_step<N>.json` file; those checkpoints
+omit only the ranked results, which stay in the sibling `_step<N>.json`.)
 
 If you only kept the results JSON (the *model*), rebuild from that — the data is
 yours to supply, and the previous champions warm-start the new search:

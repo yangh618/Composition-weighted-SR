@@ -284,7 +284,10 @@ class Regressor:
 
         Persistence (only when ``output_prefix`` is set):
           * ``<output_prefix>_step<N>.json``      — ranked results every ``save_every`` expressions
-          * ``<output_prefix>_ckpt_step<N>.json`` — resumable MCTS state every ``save_checkpoint_every``
+          * ``<output_prefix>_ckpt_step<N>.json`` — resumable checkpoint every
+            ``save_checkpoint_every`` expressions: MCTS state *plus* the full run state
+            (hyperparameters/config, data, provenance) under the ``regressor`` key; ranked
+            results are not duplicated here (they are in the sibling ``_step<N>.json``)
           * ``<output_prefix>_final.json``        — the finished run's ranked results
           * ``<output_prefix>_ckpt_final.json``   — the finished run's MCTS state *plus* a full
             ``regressor`` state (config + data + results + provenance), so the run can be rebuilt
@@ -441,8 +444,11 @@ class Regressor:
                    outputs: Optional[List[Dict]] = None) -> Dict:
         """Serializable description of this run: config + data + results + meta.
 
-        This is what :meth:`_save_final` embeds in the final checkpoint under the
-        ``regressor`` key, and what :meth:`from_state` consumes, so a saved run
+        This is what the checkpoints embed under the ``regressor`` key — the
+        periodic ones written by :meth:`_maybe_save_checkpoint` (with
+        ``outputs=None``, since ranked results are written to the sibling
+        ``_step<N>.json``) and the final one written by :meth:`_save_final` (with
+        the ranked results) — and what :meth:`from_state` consumes, so a saved run
         can be rebuilt — and restarted — without re-deriving the hyperparameters.
         """
         config = {
@@ -532,11 +538,17 @@ class Regressor:
     def load(cls, path, **overrides) -> "Regressor":
         """Load a saved run (checkpoint file **or** already-parsed dict).
 
-        The checkpoint written by :meth:`fit` carries both the MCTS state and the
-        full ``regressor`` state, so the returned model is ready to continue::
+        Every checkpoint written by :meth:`fit` — the periodic
+        ``<prefix>_ckpt_step<N>.json`` files and the final
+        ``<prefix>_ckpt_final.json`` — carries both the MCTS state and the full
+        ``regressor`` state, so the returned model is ready to continue::
 
             model = Regressor.load("results/run_ckpt_final.json")
             model.fit(seed=0, checkpoint=model.checkpoint)   # or Regressor.resume(path)
+
+        Periodic checkpoints deliberately omit the ranked results (they are in the
+        sibling ``_step<N>.json``), so ``model.results`` is ``None`` for those and
+        the previous champions are carried by the restored MCTS queues instead.
 
         Raises ``ValueError`` for files that are not checkpoints (a results-only
         JSON has no data) — use :meth:`from_results` for those.
@@ -659,13 +671,25 @@ class Regressor:
             print(f"  [Intermediate save failed] {e}")
 
     def _maybe_save_checkpoint(self, mcts: MCTS) -> None:
-        """Save full MCTS checkpoint to a JSON file if save_checkpoint_every is enabled."""
+        """Save a resumable checkpoint every ``save_checkpoint_every`` evaluations.
+
+        Like the final checkpoint, the periodic one carries the **full run state**
+        under the ``regressor`` key (hyperparameters/config, training data and
+        provenance/meta), not just the MCTS state, so ``Regressor.load`` /
+        ``Regressor.resume`` can rebuild and continue a run from *any* checkpoint
+        file — which is what the tutorial documents.
+
+        Ranked results are deliberately **not** re-computed here (that costs
+        ``num_trials``-many weight optimisations per entry); they are written to
+        the sibling ``<prefix>_step<N>.json`` by ``save_every``, and the resumed
+        search keeps its champions through the restored MCTS queues.
+        """
         if self.save_checkpoint_every <= 0 or not self.output_prefix:
             return
         from cwsr.checkpoint import save_checkpoint
         filename = f"{self.output_prefix}_ckpt_step{mcts.count_num}.json"
         try:
-            save_checkpoint(filename, mcts)
+            save_checkpoint(filename, mcts, regressor_state=self.state_dict(mcts))
             print(f"  [Checkpoint save] {filename}")
         except Exception as e:
             print(f"  [Checkpoint save failed] {e}")

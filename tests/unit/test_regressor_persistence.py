@@ -105,6 +105,87 @@ def test_periodic_saves_are_written_when_a_prefix_is_set(saved_run):
     assert load_checkpoint(checkpoint_files[-1])["mcts"]["count_num"] > 0
 
 
+# ---------------------------------------------------------------------------
+# Checkpoints are self-describing, whatever their flavour
+# ---------------------------------------------------------------------------
+def test_periodic_checkpoints_carry_the_run_state(saved_run):
+    """``_ckpt_step<N>.json`` must hold the hyperparameters, not just MCTS state.
+
+    Regression test: the periodic checkpoints used to be written without the
+    ``regressor`` state, so they could not be loaded/resumed even though the
+    tutorial documents checkpoints as self-describing.
+    """
+    checkpoint_file = sorted(p for p in saved_run.dir.iterdir()
+                             if p.name.startswith("run_ckpt_step"))[-1]
+    payload = load_checkpoint(checkpoint_file)
+
+    assert set(payload) == {"mcts", "regressor"}
+    state = payload["regressor"]
+    assert set(state) == {"created", "config", "data", "results", "meta"}
+    # ... the hyperparameters ...
+    config = state["config"]
+    assert config["var_count"] == TINY["var_count"]
+    assert config["ops"] == TINY["ops"]
+    assert config["max_depth"] == TINY["max_depth"]
+    assert config["optimization_method"] == TINY["optimization_method"]
+    assert config["seed"] == TINY["seed"]
+    # ... the training data ...
+    assert state["data"]["x_train"] and state["data"]["y_train"]
+    # ... and where the run stopped (the per-flavour difference is the results)
+    assert payload["mcts"]["count_num"] > 0
+    assert state["results"] is None          # ranked results live in *_step<N>.json
+    assert load_checkpoint(f"{saved_run.prefix}_ckpt_final.json")["regressor"]["results"]
+
+
+def test_a_periodic_checkpoint_can_be_loaded_and_resumed(saved_run, tmp_path, capsys):
+    """The documented ``Regressor.load``/``resume`` work on a periodic checkpoint."""
+    checkpoint_file = sorted(p for p in saved_run.dir.iterdir()
+                             if p.name.startswith("run_ckpt_step"))[-1]
+
+    # redirect the new segment's artifacts so the shared fixture directory stays put
+    model = Regressor.load(checkpoint_file, output_prefix=str(tmp_path / "resumed"))
+
+    assert model.var_count == TINY["var_count"]
+    assert model.ops == TINY["ops"] + [f"x{i}" for i in range(TINY["var_count"])]
+    assert model.checkpoint is not None
+    assert model.checkpoint["count_num"] > 0
+    assert model.results is None              # documented: no ranked results here
+
+    evaluations = model.fit(seed=0, checkpoint=model.checkpoint)[2]
+    assert "Resumed MCTS from" in capsys.readouterr().out
+    assert evaluations >= model.checkpoint["count_num"]
+
+
+def test_resume_from_a_periodic_checkpoint_continues_the_search(saved_run, tmp_path):
+    checkpoint_file = sorted(p for p in saved_run.dir.iterdir()
+                             if p.name.startswith("run_ckpt_step"))[-1]
+    resumed_from = load_checkpoint(checkpoint_file)["mcts"]["count_num"]
+
+    _, _, evaluations, _, outputs = Regressor.resume(
+        checkpoint_file, seed=0, max_expressions=1,
+        output_prefix=str(tmp_path / "resumed"))
+
+    assert evaluations >= resumed_from
+    assert outputs and outputs[0]["rank"] == 1
+
+
+def test_mcts_only_checkpoints_are_still_rejected_with_a_clear_error(tmp_path):
+    """Legacy/foreign MCTS-only files stay unloadable, with the documented hint."""
+    from cwsr.checkpoint import save_checkpoint
+    from tests.fixtures import synthetic as S
+
+    X, y, _ = S.tiny_linear_problem(n=8)
+    model = Regressor(x_train=X, y_train=y, x_valid=X, y_valid=y, **TINY)
+    mcts_only = tmp_path / "mcts_only_ckpt.json"
+    save_checkpoint(str(mcts_only), model._create_mcts())
+
+    assert set(load_checkpoint(mcts_only)) == {"mcts"}
+    with pytest.raises(ValueError, match="contains no 'regressor' state"):
+        Regressor.load(mcts_only)
+    with pytest.raises(ValueError, match="from_results"):
+        Regressor.resume(mcts_only)
+
+
 def test_final_results_and_checkpoint_are_written(saved_run):
     results_file = Path(f"{saved_run.prefix}_final.json")
     checkpoint_file = Path(f"{saved_run.prefix}_ckpt_final.json")
@@ -141,4 +222,3 @@ def test_no_files_are_written_without_a_prefix(tmp_path, monkeypatch):
     model = Regressor(x_train=X, y_train=y, x_valid=X, y_valid=y, **TINY)
     model.fit(seed=0)
     assert list(tmp_path.iterdir()) == []
-

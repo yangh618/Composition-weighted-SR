@@ -50,6 +50,16 @@ Run with `pytest tests/unit`. Coverage map (test module → contract verified):
 - [x] `test_regressor.py`, `test_regressor_search.py` — ops/arity/complexity wiring,
       rate clipping, `num_trials` handling, `save_status` output contract, full search
       contract + recovery of a known synthetic law + seed reproducibility.
+- [x] `test_regressor_persistence.py` — the documentation-contract tests for run
+      artifacts: `save_every`/`save_checkpoint_every` warn without `output_prefix`;
+      every written artifact has its documented shape, and **both** checkpoint
+      flavours (`_ckpt_step<N>.json`, `_ckpt_final.json`) are self-describing (they
+      embed the full run state — hyperparameters, data, provenance — under the
+      `regressor` key), so `Regressor.load`/`resume` work from either; MCTS-only
+      files keep raising the documented `ValueError`.
+- [x] `test_regressor_restart.py` — `state_dict`/`from_state` round trip,
+      `load`/`resume` from checkpoints, `from_results` warm starts (queue + GP pool),
+      and the warning when a warm-start path cannot be rebuilt.
 - [x] `test_query.py` — refined-results loading, hand-checked predictions, CLI paths.
 - [x] `test_datasets.py` — registry listing/dispatch, alloy `.npz` provider (bundled and
       synthetic), error paths; Matbench declared without downloading.
