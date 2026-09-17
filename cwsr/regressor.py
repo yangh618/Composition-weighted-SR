@@ -24,9 +24,16 @@ _STATE_CONFIG_KEYS = ("var_count", "ops", "max_depth", "K", "c", "gamma",
                       "gp_rate", "mutation_rate", "exploration_rate",
                       "max_single_arity_ops", "max_constants", "max_expressions",
                       "num_parallel", "num_batches", "num_trials",
-                      "lbfgs_upper_bound", "optimization_method", "seed",
+                      "lbfgs_upper_bound", "optimization_method",
+                      "valid_reward_weight", "seed",
                       "verbose", "save_every", "save_checkpoint_every",
                       "output_prefix")
+
+#: Default weight of the validation reward in the combined search score.
+#: ``0.5`` mixes training and validation equally; set ``1.0`` for the original
+#: CWSR behaviour (rank candidates by ``valid_reward`` alone) or ``0.0`` to train
+#: purely on the training reward.
+DEFAULT_VALID_REWARD_WEIGHT: float = 0.5
 
 
 def _is_variable(op: str) -> bool:
@@ -169,6 +176,7 @@ class Regressor:
         num_batches: int = 16,
         num_trials: int = 1,
         lbfgs_upper_bound: float = 47.0,
+        valid_reward_weight: float = DEFAULT_VALID_REWARD_WEIGHT,
         seed: int = None,
         save_every: int = 0,
         save_checkpoint_every: int = 0,
@@ -183,6 +191,14 @@ class Regressor:
         x_train (np.ndarray): Training data features of shape (n_features, n_samples)
         y_train (np.ndarray): Training data labels of shape (n_samples,)
         seed (int, optional): Random seed for reproducibility
+        valid_reward_weight (float, optional): Weight ``α`` of the validation
+            reward in the combined search score
+            ``α · valid_reward + (1 − α) · train_reward`` used to rank candidates
+            (queues, trial selection, tree backpropagation and the success
+            criterion). ``1.0`` = the original CWSR behaviour (validation only),
+            ``0.0`` = training reward only, ``0.5`` (default) = equal mix. Clipped
+            to ``[0, 1]``. Use the mix when the validation split is small or
+            noisy; keep ``1.0`` for a strict generalisation-driven search.
         output_prefix (str, optional): Where to persist run artifacts. ``fit`` writes
             ``<output_prefix>_final.json`` (ranked results) and
             ``<output_prefix>_ckpt_final.json`` (resumable MCTS state) at the end of
@@ -239,7 +255,8 @@ class Regressor:
             max_expressions,
             num_parallel,
             num_batches,
-            num_trials
+            num_trials,
+            valid_reward_weight
         )
 
         self.sigma = float(np.std(y_train)) if y_train is not None else 1.0
@@ -425,6 +442,7 @@ class Regressor:
 
     def print_simple(self, mcts) -> None:
         best_expr, best_train_reward, best_valid_reward = mcts.exp_queue.best()
+        combined_reward = mcts.score(best_train_reward, best_valid_reward)
         train_mae = (1/best_train_reward-1) * self.sigma if best_train_reward > 0 else float('inf')
         valid_mae = (1/best_valid_reward-1) * self.sigma if best_valid_reward > 0 else float('inf')
         report = [
@@ -434,6 +452,8 @@ class Regressor:
             f"  \033[32mBest Expression:\033[0m \n{best_expr}",
             f"  \033[33mTrain Reward (↑):\033[0m {best_train_reward:.3e} | MAE (↓): {train_mae:.3e}",
             f"  \033[33mValid Reward (↑):\033[0m {best_valid_reward:.3e} | MAE (↓): {valid_mae:.3e}",
+            f"  \033[35mCombined Reward (↑):\033[0m {combined_reward:.3e} "
+            f"[α_valid={self.valid_reward_weight:g}]  <- ranking criterion",
             "\n\033[1mExploration Profile:\033[0m",
             f"  Total Nodes: {mcts.total_nodes} | Active Branches: {len(mcts.root.children)}",
             f"  Exploration Rate: {self.exploration_rate:.2f} | Mutation Rate: {self.mutation_rate:.2f}"
@@ -469,6 +489,7 @@ class Regressor:
             "num_trials": int(self.num_trials),
             "lbfgs_upper_bound": float(self.lbfgs_upper_bound),
             "optimization_method": str(self.optimization_method),
+            "valid_reward_weight": float(self.valid_reward_weight),
             "seed": self.seed,
             "verbose": bool(self.verbose),
             "save_every": int(self.save_every),
@@ -625,7 +646,7 @@ class Regressor:
             train_reward = float(entry.get("train_reward") or 0.0)
             valid_reward = float(entry.get("valid_reward") or 0.0)
             mcts.exp_queue.append(str(expression), train_reward, valid_reward)
-            mcts.best_reward = max(mcts.best_reward, valid_reward)
+            mcts.best_reward = max(mcts.best_reward, mcts.score(train_reward, valid_reward))
 
             path = None
             try:
@@ -848,7 +869,7 @@ class Regressor:
     def _init_optimization_params(self, max_depth, K, c, gamma, gp_rate,
                                  mutation_rate, exploration_rate,
                                  max_single_arity_ops, max_constants, max_expressions, num_parallel,
-                                 num_batches, num_trials):
+                                 num_batches, num_trials, valid_reward_weight):
         """Initialize optimization parameters with validation"""
         self.max_depth = max_depth
         self.K = K
@@ -857,6 +878,8 @@ class Regressor:
         self.gp_rate = np.clip(gp_rate, 0.0, 1.0)
         self.mutation_rate = np.clip(mutation_rate, 0.0, 1.0)
         self.exploration_rate = np.clip(exploration_rate, 0.0, 1.0)
+        # weight of valid_reward in the combined search score (see `combine_rewards`)
+        self.valid_reward_weight = float(np.clip(valid_reward_weight, 0.0, 1.0))
         self.max_single_arity_ops = max_single_arity_ops
         self.max_constants = max_constants
         self.max_expressions = max_expressions
@@ -892,4 +915,5 @@ class Regressor:
             num_trials=self.num_trials,
             verbose=self.verbose,
             seed=self.seed,
+            valid_reward_weight=self.valid_reward_weight,
         )

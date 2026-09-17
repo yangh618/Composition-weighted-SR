@@ -41,12 +41,18 @@ Run with `pytest tests/unit`. Coverage map (test module → contract verified):
       analytic gradients vs finite differences, element parsing/normalization.
 - [x] `test_exp_tree.py`, `test_exp_queue.py` — tree construction/limits/`get_expression`
       /deterministic `random_fill`/`clear`; queue ordering, near-duplicate suppression,
-      non-finite rejection, capacity eviction.
+      non-finite rejection, capacity eviction, and the combined train/valid reward
+      (`combine_rewards`, `valid_weight`).
 - [x] `test_reward.py` — `Heaviside_vec`, `sp_module`, `Optimizer` sigma/algorithm
       resolution, `run_nlopt` on a quadratic, parameter init shapes, `valid_expression`
       accept/reject, MAE-loss value + gradient at/away from the optimum.
 - [x] `test_checkpoint.py` — `mcts_to_dict`/`mcts_from_dict` round trip (counters, queues,
       tree wiring) and `save_checkpoint`/`load_checkpoint` JSON round trip.
+- [x] `test_reward_mixing.py` — `Regressor(valid_reward_weight=α)`: default/clipping,
+      forwarding to `MCTS` and its queues, the search scoring
+      `α·valid + (1−α)·train` (trial selection, `best_reward`, queue order) while
+      keeping both raw rewards in the results, and persistence of α in
+      `state_dict`/checkpoints (plus overrides on `load`).
 - [x] `test_regressor.py`, `test_regressor_search.py` — ops/arity/complexity wiring,
       rate clipping, `num_trials` handling, `save_status` output contract, full search
       contract + recovery of a known synthetic law + seed reproducibility.
