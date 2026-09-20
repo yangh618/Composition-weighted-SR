@@ -277,6 +277,9 @@ model = Regressor(
     optimization_method="LN_NELDERMEAD",   # nlopt algorithm name
     lbfgs_upper_bound=47.0,
     num_trials=1,
+    # --- reward (ranking criterion) ---
+    valid_reward_weight=1.0,               # alpha: valid vs train reward mix
+                                           # 1.0 = validation reward only (default)
     # --- parallelism ---
     num_parallel=4,
     num_batches=16,
@@ -306,6 +309,17 @@ Parameters
 - `num_parallel`, `num_batches`, `num_trials` — parallel processes per MCTS
   batch, batch count, and NLopt restarts.
 - `optimization_method`, `lbfgs_upper_bound` — nlopt algorithm and box bound.
+- `valid_reward_weight` (α, default `1.0`) — the search ranks candidates by the
+  **mixed reward** `α·valid_reward + (1−α)·train_reward` (see
+  `cwsr.exp_queue.combine_rewards`). It drives the expression/path queues, the
+  within-batch trial selection, tree backpropagation and the "solved" criterion.
+  The default `1.0` keeps the original CWSR behaviour — candidates are selected
+  purely on the **validation** error (full validation MAE), which is the strict
+  generalisation-driven criterion. `0.5` blends train and validation equally and
+  `0.0` uses the training reward only; the weight is clipped to `[0, 1]`. Opt into
+  a mix when the validation split is small or noisy. Both raw rewards are still
+  recorded in the results, and the progress report prints the combined score with
+  the current α.
 - `seed`, `verbose`, `reward_func` — reproducibility, logging, custom reward.
 - **Persistence** — `output_prefix` is the path/prefix for run artifacts; without
   it nothing is written *and* `save_every` / `save_checkpoint_every` have no effect
@@ -316,6 +330,10 @@ Parameters
     MCTS state) every `N` expressions;
   - at the end of every run with a prefix: `<output_prefix>_final.json` (the
     ranked results) and `<output_prefix>_ckpt_final.json` (the final MCTS state).
+  - Every checkpoint (periodic or final) also embeds the run state under
+    `regressor` (`config` with all hyperparameters — including
+    `valid_reward_weight` —, the training data, provenance and `meta.count_num`),
+    so `Regressor.load`/`resume` can rebuild and continue from any of them.
 
 Methods
 - `fit(seed=None, checkpoint=None)
@@ -405,11 +423,21 @@ Output record schema (each dict in the returned/JSON `outputs`):
 | `mae` / `mae_valid` | mean absolute error on train / valid |
 | `rank` | 1-based rank |
 
+`rank` follows the **mixed** search score
+(`α·valid_reward + (1−α)·train_reward`, see `valid_reward_weight`), and the
+`mae`/`mae_valid` values are re-fitted after the search, so they are not
+guaranteed to be monotone in `rank` — select the model on the metric you care
+about (`min(outputs, key=lambda e: e["mae_valid"])`) rather than on
+`outputs[0]` alone.
+
 ### 6.2 `cwsr.mcts`
 
 - `MCTS(optimizer, gp_manager, gp_rate=0.2, mutation_rate=0.2,
   exploration_rate=0.2, K=500, c=4, gamma=0.5, verbose=False,
   succ_error_tol=1e-6, num_parallel=4, num_batches=16, num_trials=1,
+  seed=None, valid_reward_weight=1.0)` — `valid_reward_weight` mixes the training
+  and validation rewards in the ranking criterion (see `cwsr.exp_queue`);
+  `score(train_reward, valid_reward)` returns the combined value.
   seed=None)` — the search driver. Notable attributes: `.count_num` (# eval),
   `.exp_queue`, `.path_queue`, `.root`. Method `search(exp_tree)` runs one
   MCTS iteration.
@@ -439,10 +467,18 @@ expression-tree paths. Methods: `mutate(state, path)`, `generate(state)`,
 
 ### 6.5 `cwsr.exp_queue`
 
-- `Queue_Base(max_size)` — bounded priority-ish queue of `(state, reward)`.
-- `Exp_Queue(max_size)` — queue used to hold top expressions; `append(state,
-  train_reward, valid_reward=0.0, threshold=1e-5)`, `.best()`,
-  `.best_reward()`, `.random_sample()`, `len()`.
+- `Queue_Base(max_size, valid_weight=1.0)` — bounded priority-ish queue of
+  `(state, train_reward, valid_reward)` ordered by the combined score
+  `combine_rewards(train_reward, valid_reward, valid_weight)`
+  (`valid_weight=1.0` = rank by the validation reward, the default).
+- `Exp_Queue(max_size, valid_weight=1.0)` — queue used to hold top expressions;
+  `append(state, train_reward, valid_reward=0.0, threshold=1e-5)`, `.best()`,
+  `.best_reward()`, `.random_sample()`, `.score(...)`, `.score_of(entry)`,
+  `len()`. Ordering, capacity eviction and near-duplicate suppression all use the
+  combined score.
+- `combine_rewards(train_reward, valid_reward, valid_weight=1.0)` — the mixed
+  score `w·valid + (1−w)·train` (weight clipped to `[0, 1]`), used by the queues
+  and by `MCTS` (`Regressor(valid_reward_weight=...)`).
 
 ### 6.6 `cwsr.reward`
 

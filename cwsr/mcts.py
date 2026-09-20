@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional
 import numpy as np
 import multiprocessing as mp
 from cwsr.exp_tree import ExpTree
-from cwsr.exp_queue import Exp_Queue
+from cwsr.exp_queue import Exp_Queue, DEFAULT_VALID_REWARD_WEIGHT, combine_rewards
 from cwsr.reward import Optimizer
 from cwsr.gp import GPManager
 from collections import deque
@@ -109,7 +109,8 @@ def _rollout_task(state: ExpTree, seed: int = None) -> Tuple[ExpTree, List[str]]
     filled_state, path, complex = state.random_fill()
     return filled_state, path, complex
 
-def _optimize_task(optimizer, filled_state: ExpTree, path, seed: int = None) -> Tuple[float, List[str]]:
+def _optimize_task(optimizer, filled_state: ExpTree, path, seed: int = None,
+                   valid_reward_weight: float = DEFAULT_VALID_REWARD_WEIGHT) -> Tuple[float, List[str]]:
     if seed is not None:
         import numpy as np
         import random
@@ -117,27 +118,34 @@ def _optimize_task(optimizer, filled_state: ExpTree, path, seed: int = None) -> 
         random.seed(seed)
     """Rollout task for parallel execution.
     Define globally to avoid pickling issues with multiprocessing.
+
+    The two constant initialisations (positive / free) are compared with the same
+    combined score the search ranks candidates by.
     """
     expression1, train_reward1, valid_reward1 = optimizer.optimize_constants(filled_state, is_positive_init=True)
     expression2, train_reward2, valid_reward2 = optimizer.optimize_constants(filled_state, is_positive_init=False)
-    if valid_reward1 > valid_reward2:
+    if (combine_rewards(train_reward1, valid_reward1, valid_reward_weight)
+            > combine_rewards(train_reward2, valid_reward2, valid_reward_weight)):
         return expression1, train_reward1, valid_reward1, path
     else:
         return expression2, train_reward2, valid_reward2, path
 
-def _evalpath_task(num_trials: int, optimizer, state: ExpTree, path: List[str]) -> Tuple[float, List[str]]:
+def _evalpath_task(num_trials: int, optimizer, state: ExpTree, path: List[str],
+                   valid_reward_weight: float = DEFAULT_VALID_REWARD_WEIGHT) -> Tuple[float, List[str]]:
     """Evaluate a given path."""
     cloned_state = copy.deepcopy(state)
     for op in path:
         cloned_state.add_op(op)
     expression1, train_reward1, valid_reward1 = optimizer.optimize_constants(cloned_state, is_positive_init=True)
     expression2, train_reward2, valid_reward2 = optimizer.optimize_constants(cloned_state, is_positive_init=False)
-    if valid_reward1 > valid_reward2:
+    if (combine_rewards(train_reward1, valid_reward1, valid_reward_weight)
+            > combine_rewards(train_reward2, valid_reward2, valid_reward_weight)):
         return expression1, train_reward1, valid_reward1, path
     else:
         return expression2, train_reward2, valid_reward2, path
 
-def _mutation_task(gp_manager, optimizer, old_path, state: ExpTree, seed: int = None) -> float:
+def _mutation_task(gp_manager, optimizer, old_path, state: ExpTree, seed: int = None,
+                   valid_reward_weight: float = DEFAULT_VALID_REWARD_WEIGHT) -> float:
     if seed is not None:
         import numpy as np
         import random
@@ -146,13 +154,15 @@ def _mutation_task(gp_manager, optimizer, old_path, state: ExpTree, seed: int = 
     """Execute mutation operation."""
     try:
         new_path = gp_manager.mutate(state, old_path)
-        expression, train_reward, valid_reward = _evalpath_task(optimizer, state, new_path)
+        expression, train_reward, valid_reward = _evalpath_task(optimizer, state, new_path,
+                                                               valid_reward_weight)
     except:
         train_reward, valid_reward = 0, 0
         return None, train_reward, valid_reward, old_path
     return expression, train_reward, valid_reward, new_path
 
-def _crossover_task(gp_manager, num_trials, optimizer, path1, path2, state: ExpTree, seed: int = None) -> float:
+def _crossover_task(gp_manager, num_trials, optimizer, path1, path2, state: ExpTree, seed: int = None,
+                    valid_reward_weight: float = DEFAULT_VALID_REWARD_WEIGHT) -> float:
     if seed is not None:
         import numpy as np
         import random
@@ -161,8 +171,10 @@ def _crossover_task(gp_manager, num_trials, optimizer, path1, path2, state: ExpT
     """Execute crossover operation."""
     new_path1, new_path2 = gp_manager.crossover(state, path1, path2)
     try:
-        expression1, train_reward1, valid_reward1 = _evalpath_task(num_trials, optimizer, state, new_path1)
-        expression2, train_reward2, valid_reward2 = _evalpath_task(num_trials, optimizer, state, new_path2)
+        expression1, train_reward1, valid_reward1 = _evalpath_task(num_trials, optimizer, state,
+                                                                   new_path1, valid_reward_weight)
+        expression2, train_reward2, valid_reward2 = _evalpath_task(num_trials, optimizer, state,
+                                                                   new_path2, valid_reward_weight)
     except:
         return None, None, 0, 0, 0, 0, path1, path2
     return expression1, expression2, train_reward1, train_reward2, valid_reward1, valid_reward2, path1, path2
@@ -186,6 +198,7 @@ class MCTS:
         num_batches: int = 16,
         num_trials: int = 1,
         seed: int = None,
+        valid_reward_weight: float = DEFAULT_VALID_REWARD_WEIGHT,
     ) -> None:
         self.optimizer = optimizer
         self.gp_manager = gp_manager
@@ -197,11 +210,15 @@ class MCTS:
         self.gamma = gamma
         self.verbose = verbose
         self.succ_error_tol = succ_error_tol
-        
+        #: Weight of the validation reward in the combined search score
+        #: (:func:`cwsr.exp_queue.combine_rewards`); 1.0 ranks by ``valid_reward``
+        #: alone (the original CWSR behaviour), 0.0 by the training reward alone.
+        self.valid_reward_weight = max(0.0, min(1.0, float(valid_reward_weight)))
+
         # Initialize root node with reference to this MCTS instance
         self.root = MCTS_Node(mcts=self)
-        self.exp_queue = Exp_Queue(max_size=50)
-        self.path_queue = Exp_Queue(max_size=self.K)
+        self.exp_queue = Exp_Queue(max_size=50, valid_weight=self.valid_reward_weight)
+        self.path_queue = Exp_Queue(max_size=self.K, valid_weight=self.valid_reward_weight)
         self.count_num: int = 0
         self.best_reward: float = -np.inf
         self.total_nodes: int = 1  # Root node
@@ -261,7 +278,8 @@ class MCTS:
                     results = pool.starmap(
                         _mutation_task,
                         [
-                            (self.gp_manager, self.optimizer, path, state, self._task_seed(idx))
+                            (self.gp_manager, self.optimizer, path, state,
+                             self._task_seed(idx), self.valid_reward_weight)
                             for idx, (node, path, state) in enumerate(
                                 (node, path, state)
                                 for node, path, state in nodes
@@ -275,8 +293,9 @@ class MCTS:
                     if expression is not None:
                         self.exp_queue.append(expression, train_reward, valid_reward)
                         self.path_queue.append(path, train_reward, valid_reward)
-                        self.best_reward = max(self.best_reward, valid_reward)
-                        node.propagate(path, valid_reward)
+                        score = self.score(train_reward, valid_reward)
+                        self.best_reward = max(self.best_reward, score)
+                        node.propagate(path, score)
             else:
                 nodes = deque()
                 for i in range(self.num_batches):
@@ -292,7 +311,8 @@ class MCTS:
                     results = pool.starmap(
                         _crossover_task,
                         [
-                            (self.gp_manager, self.num_trials, self.optimizer, path1, path2, state, self._task_seed(idx))
+                            (self.gp_manager, self.num_trials, self.optimizer, path1, path2, state,
+                             self._task_seed(idx), self.valid_reward_weight)
                             for idx, (node, path1, path2, state) in enumerate(
                                 (node, path1, path2, state)
                                 for node, path1, path2, state in nodes
@@ -308,10 +328,12 @@ class MCTS:
                         self.path_queue.append(path1, train_reward1, valid_reward1)
                         self.exp_queue.append(expression2, train_reward2, valid_reward2)
                         self.path_queue.append(path2, train_reward2, valid_reward2)
-                        self.best_reward = max(self.best_reward, valid_reward1)
-                        self.best_reward = max(self.best_reward, valid_reward2)
-                        node.propagate(path1, valid_reward1)
-                        node.propagate(path2, valid_reward2)
+                        score1 = self.score(train_reward1, valid_reward1)
+                        score2 = self.score(train_reward2, valid_reward2)
+                        self.best_reward = max(self.best_reward, score1)
+                        self.best_reward = max(self.best_reward, score2)
+                        node.propagate(path1, score1)
+                        node.propagate(path2, score2)
 
         # MCTS simulation phase
         # This phase performs the core MCTS algorithm: Selection, Expansion, Simulation, and Backpropagation
@@ -351,35 +373,49 @@ class MCTS:
         with mp.Pool(processes=self.num_parallel) as pool:
             results = pool.starmap(
                 _optimize_task,
-                [(optimizer, state, path, self._task_seed(idx)) for idx, (optimizer, state, path) in enumerate(rollout_args)]
+                [(optimizer, state, path, self._task_seed(idx), self.valid_reward_weight)
+                 for idx, (optimizer, state, path) in enumerate(rollout_args)]
             )
 
         # Aggregate results: For each batch, select the best reward across multiple trials
         results = self._select_best_trials(results)
 
-        # Backpropagation: Update the MCTS tree with simulation results, propagating rewards up the tree
+        # Backpropagation: Update the MCTS tree with simulation results, propagating scores up the tree
         for (node, state), (expression, train_reward, valid_reward, path) in zip(nodes, results):
             self.exp_queue.append(expression, train_reward, valid_reward)
-            self.best_reward = max(self.best_reward, valid_reward)
+            score = self.score(train_reward, valid_reward)
+            self.best_reward = max(self.best_reward, score)
             if not path:
                 node.is_terminal = True
-            path = node.backpropagate(path, valid_reward)
+            path = node.backpropagate(path, score)
             self.path_queue.append(path, train_reward, valid_reward)
             self._update_terminal_status(node)
 
         return self.best_reward
-    
+
+    def score(self, train_reward: float, valid_reward: float) -> float:
+        """Combined search score of a candidate (train/valid mix).
+
+        ``valid_reward_weight = 1`` (the queue default) ranks by ``valid_reward``
+        alone; ``0`` ranks by the training reward alone; anything in between mixes
+        them. Both raw rewards stay available for reporting.
+        """
+        return combine_rewards(train_reward, valid_reward, self.valid_reward_weight)
+
     def _select_best_trials(self, results: Tuple) -> Tuple[str, float, list]:
         best_results = deque()
         for ibatch in range(self.num_batches):
-            best_valid_reward = -float('inf')
+            best_score = -float('inf')
             save_train_reward = -float('inf')
+            best_valid_reward = -float('inf')
             best_expr = None
             best_path = None
             for itrial in range(self.num_trials):
                 idx = ibatch * self.num_trials + itrial
                 expression, train_reward, valid_reward, path = results[idx]
-                if valid_reward > best_valid_reward:
+                score = self.score(train_reward, valid_reward)
+                if score > best_score:
+                    best_score = score
                     best_valid_reward = valid_reward
                     save_train_reward = train_reward
                     best_expr = expression
@@ -393,17 +429,22 @@ class MCTS:
         for ibatch in range(self.num_batches):
             save_train_reward1, save_train_reward2 = -float('inf'), -float('inf')
             best_valid_reward1, best_valid_reward2 = -float('inf'), -float('inf')
+            best_score1, best_score2 = -float('inf'), -float('inf')
             best_expr1, best_expr2 = None, None
             best_path1, best_path2 = None, None
             for itrial in range(self.num_trials):
                 idx = ibatch * self.num_trials + itrial
                 expression1, expression2, train_reward1, train_reward2, valid_reward1, valid_reward2, path1, path2 = results[idx]
-                if valid_reward1 > best_valid_reward1:
+                score1 = self.score(train_reward1, valid_reward1)
+                if score1 > best_score1:
+                    best_score1 = score1
                     best_valid_reward1 = valid_reward1
                     save_train_reward1 = train_reward1
                     best_expr1 = expression1
                     best_path1 = path1
-                if valid_reward2 > best_valid_reward2:
+                score2 = self.score(train_reward2, valid_reward2)
+                if score2 > best_score2:
+                    best_score2 = score2
                     best_valid_reward2 = valid_reward2
                     save_train_reward2 = train_reward2
                     best_expr2 = expression2

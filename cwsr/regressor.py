@@ -7,6 +7,7 @@ import json
 import warnings
 from cwsr.mcts import MCTS
 from cwsr.exp_tree import ExpTree
+from cwsr.exp_queue import DEFAULT_VALID_REWARD_WEIGHT
 from cwsr.reward import Optimizer
 from cwsr.gp import GPManager
 import gc
@@ -24,9 +25,16 @@ _STATE_CONFIG_KEYS = ("var_count", "ops", "max_depth", "K", "c", "gamma",
                       "gp_rate", "mutation_rate", "exploration_rate",
                       "max_single_arity_ops", "max_constants", "max_expressions",
                       "num_parallel", "num_batches", "num_trials",
-                      "lbfgs_upper_bound", "optimization_method", "seed",
+                      "lbfgs_upper_bound", "optimization_method",
+                      "valid_reward_weight", "seed",
                       "verbose", "save_every", "save_checkpoint_every",
                       "output_prefix")
+
+#: Default weight of the validation reward in the combined search score
+#: (:data:`cwsr.exp_queue.DEFAULT_VALID_REWARD_WEIGHT`): ``1.0`` ranks candidates
+#: by the validation reward alone (the original CWSR behaviour, and the default).
+#: Mixing in the training reward is opt-in — ``valid_reward_weight=0.5`` for an
+#: equal blend, ``0.0`` for the training reward only.
 
 
 def _is_variable(op: str) -> bool:
@@ -169,6 +177,7 @@ class Regressor:
         num_batches: int = 16,
         num_trials: int = 1,
         lbfgs_upper_bound: float = 47.0,
+        valid_reward_weight: float = DEFAULT_VALID_REWARD_WEIGHT,
         seed: int = None,
         save_every: int = 0,
         save_checkpoint_every: int = 0,
@@ -183,6 +192,15 @@ class Regressor:
         x_train (np.ndarray): Training data features of shape (n_features, n_samples)
         y_train (np.ndarray): Training data labels of shape (n_samples,)
         seed (int, optional): Random seed for reproducibility
+        valid_reward_weight (float, optional): Weight ``α`` of the validation
+            reward in the combined search score
+            ``α · valid_reward + (1 − α) · train_reward`` used to rank candidates
+            (queues, trial selection, tree backpropagation and the success
+            criterion). Default ``1.0`` = rank by the **validation** reward alone
+            (the original CWSR behaviour, i.e. full validation MAE); ``0.5``
+            blends train and validation equally, ``0.0`` uses the training reward
+            only. Clipped to ``[0, 1]``. Opt into the mix when the validation
+            split is small or noisy.
         output_prefix (str, optional): Where to persist run artifacts. ``fit`` writes
             ``<output_prefix>_final.json`` (ranked results) and
             ``<output_prefix>_ckpt_final.json`` (resumable MCTS state) at the end of
@@ -239,7 +257,8 @@ class Regressor:
             max_expressions,
             num_parallel,
             num_batches,
-            num_trials
+            num_trials,
+            valid_reward_weight
         )
 
         self.sigma = float(np.std(y_train)) if y_train is not None else 1.0
@@ -284,7 +303,10 @@ class Regressor:
 
         Persistence (only when ``output_prefix`` is set):
           * ``<output_prefix>_step<N>.json``      — ranked results every ``save_every`` expressions
-          * ``<output_prefix>_ckpt_step<N>.json`` — resumable MCTS state every ``save_checkpoint_every``
+          * ``<output_prefix>_ckpt_step<N>.json`` — resumable checkpoint every
+            ``save_checkpoint_every`` expressions: MCTS state *plus* the full run state
+            (hyperparameters/config, data, provenance) under the ``regressor`` key; ranked
+            results are not duplicated here (they are in the sibling ``_step<N>.json``)
           * ``<output_prefix>_final.json``        — the finished run's ranked results
           * ``<output_prefix>_ckpt_final.json``   — the finished run's MCTS state *plus* a full
             ``regressor`` state (config + data + results + provenance), so the run can be rebuilt
@@ -422,6 +444,7 @@ class Regressor:
 
     def print_simple(self, mcts) -> None:
         best_expr, best_train_reward, best_valid_reward = mcts.exp_queue.best()
+        combined_reward = mcts.score(best_train_reward, best_valid_reward)
         train_mae = (1/best_train_reward-1) * self.sigma if best_train_reward > 0 else float('inf')
         valid_mae = (1/best_valid_reward-1) * self.sigma if best_valid_reward > 0 else float('inf')
         report = [
@@ -431,6 +454,8 @@ class Regressor:
             f"  \033[32mBest Expression:\033[0m \n{best_expr}",
             f"  \033[33mTrain Reward (↑):\033[0m {best_train_reward:.3e} | MAE (↓): {train_mae:.3e}",
             f"  \033[33mValid Reward (↑):\033[0m {best_valid_reward:.3e} | MAE (↓): {valid_mae:.3e}",
+            f"  \033[35mCombined Reward (↑):\033[0m {combined_reward:.3e} "
+            f"[α_valid={self.valid_reward_weight:g}]  <- ranking criterion",
             "\n\033[1mExploration Profile:\033[0m",
             f"  Total Nodes: {mcts.total_nodes} | Active Branches: {len(mcts.root.children)}",
             f"  Exploration Rate: {self.exploration_rate:.2f} | Mutation Rate: {self.mutation_rate:.2f}"
@@ -441,8 +466,11 @@ class Regressor:
                    outputs: Optional[List[Dict]] = None) -> Dict:
         """Serializable description of this run: config + data + results + meta.
 
-        This is what :meth:`_save_final` embeds in the final checkpoint under the
-        ``regressor`` key, and what :meth:`from_state` consumes, so a saved run
+        This is what the checkpoints embed under the ``regressor`` key — the
+        periodic ones written by :meth:`_maybe_save_checkpoint` (with
+        ``outputs=None``, since ranked results are written to the sibling
+        ``_step<N>.json``) and the final one written by :meth:`_save_final` (with
+        the ranked results) — and what :meth:`from_state` consumes, so a saved run
         can be rebuilt — and restarted — without re-deriving the hyperparameters.
         """
         config = {
@@ -463,6 +491,7 @@ class Regressor:
             "num_trials": int(self.num_trials),
             "lbfgs_upper_bound": float(self.lbfgs_upper_bound),
             "optimization_method": str(self.optimization_method),
+            "valid_reward_weight": float(self.valid_reward_weight),
             "seed": self.seed,
             "verbose": bool(self.verbose),
             "save_every": int(self.save_every),
@@ -532,11 +561,17 @@ class Regressor:
     def load(cls, path, **overrides) -> "Regressor":
         """Load a saved run (checkpoint file **or** already-parsed dict).
 
-        The checkpoint written by :meth:`fit` carries both the MCTS state and the
-        full ``regressor`` state, so the returned model is ready to continue::
+        Every checkpoint written by :meth:`fit` — the periodic
+        ``<prefix>_ckpt_step<N>.json`` files and the final
+        ``<prefix>_ckpt_final.json`` — carries both the MCTS state and the full
+        ``regressor`` state, so the returned model is ready to continue::
 
             model = Regressor.load("results/run_ckpt_final.json")
             model.fit(seed=0, checkpoint=model.checkpoint)   # or Regressor.resume(path)
+
+        Periodic checkpoints deliberately omit the ranked results (they are in the
+        sibling ``_step<N>.json``), so ``model.results`` is ``None`` for those and
+        the previous champions are carried by the restored MCTS queues instead.
 
         Raises ``ValueError`` for files that are not checkpoints (a results-only
         JSON has no data) — use :meth:`from_results` for those.
@@ -613,7 +648,7 @@ class Regressor:
             train_reward = float(entry.get("train_reward") or 0.0)
             valid_reward = float(entry.get("valid_reward") or 0.0)
             mcts.exp_queue.append(str(expression), train_reward, valid_reward)
-            mcts.best_reward = max(mcts.best_reward, valid_reward)
+            mcts.best_reward = max(mcts.best_reward, mcts.score(train_reward, valid_reward))
 
             path = None
             try:
@@ -659,13 +694,25 @@ class Regressor:
             print(f"  [Intermediate save failed] {e}")
 
     def _maybe_save_checkpoint(self, mcts: MCTS) -> None:
-        """Save full MCTS checkpoint to a JSON file if save_checkpoint_every is enabled."""
+        """Save a resumable checkpoint every ``save_checkpoint_every`` evaluations.
+
+        Like the final checkpoint, the periodic one carries the **full run state**
+        under the ``regressor`` key (hyperparameters/config, training data and
+        provenance/meta), not just the MCTS state, so ``Regressor.load`` /
+        ``Regressor.resume`` can rebuild and continue a run from *any* checkpoint
+        file — which is what the tutorial documents.
+
+        Ranked results are deliberately **not** re-computed here (that costs
+        ``num_trials``-many weight optimisations per entry); they are written to
+        the sibling ``<prefix>_step<N>.json`` by ``save_every``, and the resumed
+        search keeps its champions through the restored MCTS queues.
+        """
         if self.save_checkpoint_every <= 0 or not self.output_prefix:
             return
         from cwsr.checkpoint import save_checkpoint
         filename = f"{self.output_prefix}_ckpt_step{mcts.count_num}.json"
         try:
-            save_checkpoint(filename, mcts)
+            save_checkpoint(filename, mcts, regressor_state=self.state_dict(mcts))
             print(f"  [Checkpoint save] {filename}")
         except Exception as e:
             print(f"  [Checkpoint save failed] {e}")
@@ -824,7 +871,7 @@ class Regressor:
     def _init_optimization_params(self, max_depth, K, c, gamma, gp_rate,
                                  mutation_rate, exploration_rate,
                                  max_single_arity_ops, max_constants, max_expressions, num_parallel,
-                                 num_batches, num_trials):
+                                 num_batches, num_trials, valid_reward_weight):
         """Initialize optimization parameters with validation"""
         self.max_depth = max_depth
         self.K = K
@@ -833,6 +880,8 @@ class Regressor:
         self.gp_rate = np.clip(gp_rate, 0.0, 1.0)
         self.mutation_rate = np.clip(mutation_rate, 0.0, 1.0)
         self.exploration_rate = np.clip(exploration_rate, 0.0, 1.0)
+        # weight of valid_reward in the combined search score (see `combine_rewards`)
+        self.valid_reward_weight = float(np.clip(valid_reward_weight, 0.0, 1.0))
         self.max_single_arity_ops = max_single_arity_ops
         self.max_constants = max_constants
         self.max_expressions = max_expressions
@@ -868,4 +917,5 @@ class Regressor:
             num_trials=self.num_trials,
             verbose=self.verbose,
             seed=self.seed,
+            valid_reward_weight=self.valid_reward_weight,
         )

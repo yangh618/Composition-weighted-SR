@@ -7,7 +7,8 @@ import random
 import numpy as np
 import pytest
 
-from cwsr.exp_queue import Exp_Queue, Queue_Base
+from cwsr.exp_queue import (DEFAULT_VALID_REWARD_WEIGHT, Exp_Queue, Queue_Base,
+                            combine_rewards)
 
 
 def test_exp_queue_is_a_queue_base():
@@ -86,3 +87,79 @@ def test_rewards_stay_finite_and_sorted_under_many_inserts():
     assert len(rewards) == 10
     assert rewards == sorted(rewards, reverse=True)
     assert queue.min_reward == pytest.approx(rewards[-1])
+
+
+# ---------------------------------------------------------------------------
+# Reward mixing: rank by a train/valid blend instead of valid alone
+# ---------------------------------------------------------------------------
+def test_combine_rewards_blends_train_and_valid():
+    # weight 1.0 keeps the original "valid reward only" behaviour ...
+    assert combine_rewards(0.2, 0.8, 1.0) == pytest.approx(0.8)
+    # ... weight 0.0 is the training reward alone ...
+    assert combine_rewards(0.2, 0.8, 0.0) == pytest.approx(0.2)
+    # ... and 0.5 mixes them equally
+    assert combine_rewards(0.2, 0.8, 0.5) == pytest.approx(0.5)
+    assert combine_rewards(0.4, 0.6, 0.25) == pytest.approx(0.45)
+
+
+@pytest.mark.parametrize("weight, expected", [(1.7, 0.8), (-3.0, 0.2), (2.0, 0.8)])
+def test_combine_rewards_clips_the_weight(weight, expected):
+    assert combine_rewards(0.2, 0.8, weight) == pytest.approx(expected)
+
+
+def test_queue_default_weight_ranks_by_valid_reward():
+    assert DEFAULT_VALID_REWARD_WEIGHT == 1.0
+    queue = Exp_Queue(max_size=3)
+    assert queue.valid_weight == 1.0
+    queue.append("a", 0.9, 0.1)
+    queue.append("b", 0.1, 0.5)
+    assert queue.best()[0] == "b"           # valid wins at weight 1.0
+    assert queue.score(0.9, 0.1) == pytest.approx(0.1)
+
+
+def test_queue_can_rank_by_the_training_reward():
+    queue = Exp_Queue(max_size=3, valid_weight=0.0)
+    queue.append("train_best", 0.9, 0.1)
+    queue.append("valid_best", 0.1, 0.5)
+    assert queue.best()[0] == "train_best"
+    assert queue.min_reward == pytest.approx(0.1)   # the valid-best entry's score
+
+
+def test_queue_rank_order_depends_on_the_weight():
+    # (state, train_reward, valid_reward); note the blends below are pairwise
+    # distinct for every weight so the duplicate filter never interferes
+    entries = [("both_good", 0.8, 0.8), ("train_heavy", 0.9, 0.3),
+               ("valid_heavy", 0.2, 0.9)]
+
+    def order(weight):
+        queue = Exp_Queue(max_size=4, valid_weight=weight)
+        for state, train, valid in entries:
+            assert queue.append(state, train, valid) is True
+        return [entry[0] for entry in queue.list]
+
+    assert order(1.0) == ["valid_heavy", "both_good", "train_heavy"]
+    assert order(0.0) == ["train_heavy", "both_good", "valid_heavy"]
+    assert order(0.5) == ["both_good", "train_heavy", "valid_heavy"]
+
+
+def test_duplicate_suppression_uses_the_combined_score():
+    """Two entries with the same *combined* score are treated as duplicates."""
+    mixed = Exp_Queue(max_size=4, valid_weight=0.5)
+    assert mixed.append("low_valid", 0.8, 0.2) is True
+    assert mixed.append("high_valid", 0.2, 0.8) is False   # identical blend (0.5)
+    assert len(mixed) == 1
+
+    # ... while the pure-valid queue keeps them apart
+    valid_only = Exp_Queue(max_size=4, valid_weight=1.0)
+    assert valid_only.append("low_valid", 0.8, 0.2) is True
+    assert valid_only.append("high_valid", 0.2, 0.8) is True
+    assert len(valid_only) == 2
+
+
+def test_capacity_eviction_uses_the_combined_score():
+    queue = Exp_Queue(max_size=2, valid_weight=0.5)
+    queue.append("weak", 0.1, 0.2)        # blend 0.15
+    queue.append("strong", 0.4, 0.4)      # blend 0.40
+    assert queue.append("stronger", 0.5, 0.5) is True     # blend 0.50 evicts "weak"
+    assert [entry[0] for entry in queue.list] == ["stronger", "strong"]
+    assert queue.append("weakest", 0.0, 0.0) is False

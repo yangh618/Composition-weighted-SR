@@ -41,15 +41,31 @@ Run with `pytest tests/unit`. Coverage map (test module → contract verified):
       analytic gradients vs finite differences, element parsing/normalization.
 - [x] `test_exp_tree.py`, `test_exp_queue.py` — tree construction/limits/`get_expression`
       /deterministic `random_fill`/`clear`; queue ordering, near-duplicate suppression,
-      non-finite rejection, capacity eviction.
+      non-finite rejection, capacity eviction, and the combined train/valid reward
+      (`combine_rewards`, `valid_weight`).
 - [x] `test_reward.py` — `Heaviside_vec`, `sp_module`, `Optimizer` sigma/algorithm
       resolution, `run_nlopt` on a quadratic, parameter init shapes, `valid_expression`
       accept/reject, MAE-loss value + gradient at/away from the optimum.
 - [x] `test_checkpoint.py` — `mcts_to_dict`/`mcts_from_dict` round trip (counters, queues,
       tree wiring) and `save_checkpoint`/`load_checkpoint` JSON round trip.
+- [x] `test_reward_mixing.py` — `Regressor(valid_reward_weight=α)`: default/clipping,
+      forwarding to `MCTS` and its queues, the search scoring
+      `α·valid + (1−α)·train` (trial selection, `best_reward`, queue order) while
+      keeping both raw rewards in the results, and persistence of α in
+      `state_dict`/checkpoints (plus overrides on `load`).
 - [x] `test_regressor.py`, `test_regressor_search.py` — ops/arity/complexity wiring,
       rate clipping, `num_trials` handling, `save_status` output contract, full search
       contract + recovery of a known synthetic law + seed reproducibility.
+- [x] `test_regressor_persistence.py` — the documentation-contract tests for run
+      artifacts: `save_every`/`save_checkpoint_every` warn without `output_prefix`;
+      every written artifact has its documented shape, and **both** checkpoint
+      flavours (`_ckpt_step<N>.json`, `_ckpt_final.json`) are self-describing (they
+      embed the full run state — hyperparameters, data, provenance — under the
+      `regressor` key), so `Regressor.load`/`resume` work from either; MCTS-only
+      files keep raising the documented `ValueError`.
+- [x] `test_regressor_restart.py` — `state_dict`/`from_state` round trip,
+      `load`/`resume` from checkpoints, `from_results` warm starts (queue + GP pool),
+      and the warning when a warm-start path cannot be rebuilt.
 - [x] `test_query.py` — refined-results loading, hand-checked predictions, CLI paths.
 - [x] `test_datasets.py` — registry listing/dispatch, alloy `.npz` provider (bundled and
       synthetic), error paths; Matbench declared without downloading.
