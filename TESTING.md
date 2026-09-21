@@ -66,6 +66,15 @@ Run with `pytest tests/unit`. Coverage map (test module → contract verified):
 - [x] `test_regressor_restart.py` — `state_dict`/`from_state` round trip,
       `load`/`resume` from checkpoints, `from_results` warm starts (queue + GP pool),
       and the warning when a warm-start path cannot be rebuilt.
+- [x] `test_regressor_hyperparameters.py` — standalone hyperparameters persistence:
+      `hyperparameters()` is exactly the checkpoint `config`, `save_hyperparameters`
+      writes `<prefix>_hyperparams.json` (or an explicit path; `ValueError` without
+      either) with the documented `format`/`created`/`config`/`meta` shape,
+      `load_hyperparameters` reads a hyperparameters file, a `state_dict` or a
+      checkpoint (and rejects payloads without a `config`), and
+      `from_hyperparameters` replays the settings on other data (with overrides,
+      no MCTS state), including a full run whose `fit` wrote and replayed its own
+      settings file.
 - [x] `test_query.py` — refined-results loading, hand-checked predictions, CLI paths.
 - [x] `test_datasets.py` — registry listing/dispatch, alloy `.npz` provider (bundled and
       synthetic), error paths; Matbench declared without downloading.

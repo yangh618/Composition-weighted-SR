@@ -191,7 +191,9 @@ The progress report prints the combined score together with the α in use.
 With the low-level `Regressor` **nothing is written to disk unless you set
 `output_prefix`** — and the periodic save flags only work together with it
 (asking for `save_every` without a prefix raises a `UserWarning`, because
-otherwise the run silently persists nothing):
+otherwise the run silently persists nothing). When a prefix *is* set, `fit`
+records the run's hyperparameters before the search starts and writes the final
+artifacts when it ends:
 
 ```python
 from pathlib import Path
@@ -215,6 +217,7 @@ Files produced:
 
 | File | Content |
 |---|---|
+| `<prefix>_hyperparams.json` | the run's hyperparameters, written as soon as the search starts (see below) |
 | `<prefix>_step<N>.json` | ranked results every `save_every` expressions |
 | `<prefix>_ckpt_step<N>.json` | resumable checkpoint every `save_checkpoint_every` expressions: MCTS state **plus** the full run state (hyperparameters, training data, provenance) |
 | `<prefix>_final.json` | the finished run's ranked results (**the model**) |
@@ -235,6 +238,34 @@ model.fit(seed=42, checkpoint=checkpoint)     # prints "[Checkpoint] Resumed MCT
 model = Regressor.resume(f"{prefix}_ckpt_step5000.json", seed=42,
                          max_expressions=50000)      # override only what you change
 ```
+
+The **hyperparameters** live on their own in `<prefix>_hyperparams.json`, written
+before the search so a long or interrupted run still records its configuration:
+
+```python
+{"format": "cwsr-regressor-hyperparameters", "created": "...",
+ "config": {"var_count": 3, "ops": ["mul", "sub", ...], "max_expressions": 10000, ...},
+ "meta": {"dataset": "...", "n_samples": ...}}
+```
+
+Reload them with `Regressor.load_hyperparameters(...)` (works on the
+`_hyperparams.json` file, on `state_dict()` output, and on any checkpoint), or
+replay them on another dataset with `Regressor.from_hyperparameters(...)`:
+
+```python
+from cwsr import Regressor
+
+params = Regressor.load_hyperparameters(f"{prefix}_hyperparams.json")
+
+model = Regressor.from_hyperparameters(f"{prefix}_hyperparams.json",
+                                       x_train=X2, y_train=y2,
+                                       max_expressions=20000)   # only what changes
+model.fit(seed=42)          # a fresh search with the saved configuration
+```
+
+(`reward_func` is a callable and the data is not stored in the hyperparameters —
+pass both explicitly when replaying.)
+
 
 The high-level driver does all of this for you (it sets the prefix, so `_step`,
 `_ckpt_step` and `_final` files land next to the run's outputs JSON):
@@ -293,6 +324,21 @@ operator paths join the mutation/crossover pool, so the search continues from th
 previous law instead of starting over. Anything whose shape cannot be rebuilt
 inside `max_depth`/the op set (e.g. a literal constant when `R` is not in `ops`)
 only lands in the candidate list, with a `UserWarning` explaining why.
+
+If you want the *settings* rather than the run — to re-tune on another dataset, or
+to keep a campaign's configuration under version control — use the
+hyperparameters file (or any checkpoint, which embeds the same `config`):
+
+```python
+params = Regressor.load_hyperparameters("results/density_run_hyperparams.json")
+# {'var_count': 3, 'ops': ['mul', ...], 'max_expressions': 10000, ...}
+
+model = Regressor.from_hyperparameters("results/density_run_hyperparams.json",
+                                       x_train=X2[tr], y_train=y2[tr],
+                                       x_valid=X2[va], y_valid=y2[va],
+                                       max_expressions=20000)   # override what changes
+model.fit(seed=42)      # fresh search with the archived configuration
+```
 
 ---
 

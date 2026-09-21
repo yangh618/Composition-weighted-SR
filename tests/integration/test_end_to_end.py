@@ -92,14 +92,26 @@ def test_every_training_run_is_persisted(fitted_run):
     """``fit_dataset`` sets an ``output_prefix``, so the finished run is on disk.
 
     Artifacts: ``cwsr_outputs_<name>_<ts>.json`` (the model, written by
-    ``cwsr.model.train``) plus ``…_final.json`` and ``…_ckpt_final.json``
-    (written by ``Regressor.fit``). The final checkpoint must be resumable.
+    ``cwsr.model.train``) plus ``…_hyperparams.json``, ``…_final.json`` and
+    ``…_ckpt_final.json`` (written by ``Regressor.fit``). The final checkpoint
+    must be resumable.
     """
     from cwsr.checkpoint import load_checkpoint
 
     names = {path.name for path in fitted_run.output_dir.iterdir()}
+    assert any(name.endswith("_hyperparams.json") for name in names), names
     assert any(name.endswith("_final.json") for name in names), names
     assert any(name.endswith("_ckpt_final.json") for name in names), names
+
+    # ... and the hyperparameters file reloads to the same settings
+    from cwsr import Regressor
+
+    hyperparams_file = next(path for path in fitted_run.output_dir.iterdir()
+                            if path.name.endswith("_hyperparams.json"))
+    assert Regressor.load_hyperparameters(hyperparams_file) == \
+           Regressor.load_hyperparameters(
+               next(path for path in fitted_run.output_dir.iterdir()
+                    if path.name.endswith("_ckpt_final.json")))
 
     checkpoint_file = next(path for path in fitted_run.output_dir.iterdir()
                            if path.name.endswith("_ckpt_final.json"))

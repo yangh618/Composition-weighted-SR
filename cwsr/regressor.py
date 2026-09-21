@@ -18,7 +18,8 @@ _FUNCTION_OPS = {"sqrt": "sqrt", "exp": "exp", "log": "log", "sin": "sin",
                  "cos": "cos", "tanh": "tanh", "Abs": "Abs",
                  "Max": "Max", "Min": "Min"}
 
-#: Constructor settings captured by :meth:`Regressor.state_dict` (and restored by
+#: Constructor settings captured by :meth:`Regressor.hyperparameters`, embedded as
+#: the ``config`` mapping of :meth:`Regressor.state_dict` (and restored by
 #: :meth:`Regressor.from_state`). ``reward_func`` is deliberately absent (a
 #: callable cannot be serialized).
 _STATE_CONFIG_KEYS = ("var_count", "ops", "max_depth", "K", "c", "gamma",
@@ -35,6 +36,14 @@ _STATE_CONFIG_KEYS = ("var_count", "ops", "max_depth", "K", "c", "gamma",
 #: by the validation reward alone (the original CWSR behaviour, and the default).
 #: Mixing in the training reward is opt-in — ``valid_reward_weight=0.5`` for an
 #: equal blend, ``0.0`` for the training reward only.
+
+#: Marker written as ``format`` in the standalone hyperparameters JSON produced by
+#: :meth:`Regressor.save_hyperparameters` (and recognised by
+#: :meth:`Regressor.load_hyperparameters`).
+HYPERPARAMETERS_FORMAT = "cwsr-regressor-hyperparameters"
+
+#: Suffix appended to ``output_prefix`` for the standalone hyperparameters file.
+HYPERPARAMETERS_SUFFIX = "_hyperparams.json"
 
 
 def _is_variable(op: str) -> bool:
@@ -302,6 +311,8 @@ class Regressor:
         """Perform symbolic regression search
 
         Persistence (only when ``output_prefix`` is set):
+          * ``<output_prefix>_hyperparams.json``  — this run's hyperparameters, written
+            as soon as the search starts (see :meth:`save_hyperparameters`)
           * ``<output_prefix>_step<N>.json``      — ranked results every ``save_every`` expressions
           * ``<output_prefix>_ckpt_step<N>.json`` — resumable checkpoint every
             ``save_checkpoint_every`` expressions: MCTS state *plus* the full run state
@@ -327,6 +338,9 @@ class Regressor:
 
         _warn_if_no_output_prefix(self.save_every, self.save_checkpoint_every,
                                   self.output_prefix)
+        # Record the run's settings before the search (a long run must leave its
+        # configuration on disk even if it is interrupted).
+        self._maybe_save_hyperparameters()
 
         with np.errstate(all='ignore'):
             mcts = self._create_mcts()
@@ -462,18 +476,20 @@ class Regressor:
         ]
         print("\n".join(report))
 
-    def state_dict(self, mcts: Optional[MCTS] = None,
-                   outputs: Optional[List[Dict]] = None) -> Dict:
-        """Serializable description of this run: config + data + results + meta.
+    def hyperparameters(self) -> Dict:
+        """The constructor settings of this run, ready for ``json.dump``.
 
-        This is what the checkpoints embed under the ``regressor`` key — the
-        periodic ones written by :meth:`_maybe_save_checkpoint` (with
-        ``outputs=None``, since ranked results are written to the sibling
-        ``_step<N>.json``) and the final one written by :meth:`_save_final` (with
-        the ranked results) — and what :meth:`from_state` consumes, so a saved run
-        can be rebuilt — and restarted — without re-deriving the hyperparameters.
+        This is exactly the mapping :meth:`state_dict` embeds as ``config`` in
+        every checkpoint, exposed on its own so it can be written to a
+        standalone hyperparameters file by :meth:`save_hyperparameters` and
+        replayed on (possibly different) data by :meth:`from_hyperparameters`.
+
+        Variables are *not* listed in ``ops`` (they are re-derived from
+        ``var_count``), and everything that is not a JSON-serializable setting —
+        ``reward_func`` (a callable), the training/validation data, the results
+        and ``run_meta`` (provenance) — is excluded.
         """
-        config = {
+        return {
             "var_count": int(self.var_count),
             "ops": [op for op in self.ops if not _is_variable(op)],
             "max_depth": int(self.max_depth),
@@ -498,6 +514,58 @@ class Regressor:
             "save_checkpoint_every": int(self.save_checkpoint_every),
             "output_prefix": self.output_prefix,
         }
+
+    def save_hyperparameters(self, path: Optional[str] = None) -> str:
+        """Write this run's hyperparameters to a standalone JSON file.
+
+        ``path`` defaults to ``<output_prefix>_hyperparams.json``, i.e. next to
+        the run's other artifacts (``fit`` writes that file as soon as the search
+        starts, so a long or interrupted run still records its configuration).
+        Pass ``path`` explicitly to write elsewhere — that also works without an
+        ``output_prefix``.
+
+        The file is self-describing and marked by its ``format`` field::
+
+            {"format": "cwsr-regressor-hyperparameters",
+             "created": "2026-09-21 10:00:00",
+             "config": {...},          # every constructor setting
+             "meta": {...}}            # run_meta provenance
+
+        Returns the path written. Read it back with :meth:`load_hyperparameters`
+        (settings only) or :meth:`from_hyperparameters` (a rebuilt model).
+        """
+        if path is None:
+            if not self.output_prefix:
+                raise ValueError(
+                    "no path given and output_prefix is not set: pass an explicit "
+                    "path (or set output_prefix=...) to save the hyperparameters."
+                )
+            path = f"{self.output_prefix}{HYPERPARAMETERS_SUFFIX}"
+        payload = {
+            "format": HYPERPARAMETERS_FORMAT,
+            "created": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "config": self.hyperparameters(),
+            "meta": dict(self.run_meta),
+        }
+        with open(path, "w") as handle:
+            json.dump(payload, handle, indent=2)
+        return path
+
+    def state_dict(self, mcts: Optional[MCTS] = None,
+                   outputs: Optional[List[Dict]] = None) -> Dict:
+        """Serializable description of this run: config + data + results + meta.
+
+        This is what the checkpoints embed under the ``regressor`` key — the
+        periodic ones written by :meth:`_maybe_save_checkpoint` (with
+        ``outputs=None``, since ranked results are written to the sibling
+        ``_step<N>.json``) and the final one written by :meth:`_save_final` (with
+        the ranked results) — and what :meth:`from_state` consumes, so a saved run
+        can be rebuilt — and restarted — without re-deriving the hyperparameters.
+
+        The ``config`` entry is exactly :meth:`hyperparameters`; that mapping is
+        also what :meth:`save_hyperparameters` writes to its own file.
+        """
+        config = self.hyperparameters()
         data = {
             "x_train": np.asarray(self.x_train).tolist(),
             "y_train": np.asarray(self.y_train).tolist(),
@@ -516,6 +584,71 @@ class Regressor:
             "results": outputs,
             "meta": meta,
         }
+
+    @classmethod
+    def load_hyperparameters(cls, path) -> Dict:
+        """Reload the hyperparameters saved by :meth:`save_hyperparameters`.
+
+        ``path`` may be the hyperparameters JSON, a file/dict carrying a
+        :meth:`state_dict` payload, or a checkpoint written by :meth:`fit` —
+        all of them embed the same ``config`` mapping, so there is always a way
+        back to the settings a run actually used::
+
+            Regressor.load_hyperparameters("results/run_hyperparams.json")
+            Regressor.load_hyperparameters("results/run_ckpt_final.json")
+
+        Returns the ``config`` mapping (the constructor settings, with the
+        variables re-derived from ``var_count``). ``reward_func`` is not part of
+        it, and neither is the data — pass both explicitly when rebuilding (see
+        :meth:`from_hyperparameters`). Raises ``ValueError`` for files that hold
+        no ``config`` (e.g. a results-only JSON).
+        """
+        if isinstance(path, dict):
+            payload = path
+        else:
+            from cwsr.checkpoint import load_checkpoint
+            payload = load_checkpoint(path)
+        if isinstance(payload, dict) and "config" not in payload:
+            # a checkpoint written by fit nests the run state under "regressor"
+            nested = payload.get("regressor")
+            payload = nested if isinstance(nested, dict) else {}
+        config = payload.get("config") if isinstance(payload, dict) else None
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"{path!r} carries no 'config', so it is neither a "
+                f"{HYPERPARAMETERS_FORMAT} file nor a run state/checkpoint. "
+                "Expected a file written by Regressor.save_hyperparameters, a "
+                "Regressor.state_dict() payload, or a checkpoint written by "
+                "Regressor.fit."
+            )
+        return dict(config)
+
+    @classmethod
+    def from_hyperparameters(cls, path, x_train, y_train,
+                             x_valid: Optional[np.ndarray] = None,
+                             y_valid: Optional[np.ndarray] = None,
+                             **overrides) -> "Regressor":
+        """Rebuild a model from saved hyperparameters and (new) data.
+
+        The counterpart of :meth:`save_hyperparameters`: every setting recorded
+        by the original run is replayed on the data given here, and
+        ``overrides`` replace individual entries (``max_expressions=20000`` for a
+        longer budget, ``output_prefix=`` to redirect the artifacts, a new
+        ``ops=``/``max_depth=``, ...). The file needs no training data and no
+        previous results, so this is the way to reproduce a search configuration
+        on a different dataset — pass ``warm_start=`` as an override to also
+        carry over the old champions.
+
+        Unlike :meth:`load`/:meth:`resume`, no MCTS state is attached:
+        ``model.checkpoint`` stays ``None`` and :meth:`fit` starts a fresh search.
+        """
+        state = {"config": cls.load_hyperparameters(path), "data": {},
+                 "results": None, "meta": {}}
+        return cls.from_state(
+            state,
+            x_train=x_train, y_train=y_train, x_valid=x_valid, y_valid=y_valid,
+            **overrides,
+        )
 
     @classmethod
     def from_state(cls, state: Dict, **overrides) -> "Regressor":
@@ -679,6 +812,22 @@ class Regressor:
             return template.is_terminal()
         except Exception:
             return False
+
+    def _maybe_save_hyperparameters(self) -> None:
+        """Record this run's settings next to its other artifacts.
+
+        Written once, *before* the search starts, so an interrupted (or very
+        long) run still leaves its configuration on disk; the periodic and final
+        checkpoints embed the same ``config`` mapping. No-op without an
+        ``output_prefix``.
+        """
+        if not self.output_prefix:
+            return
+        try:
+            filename = self.save_hyperparameters()
+            print(f"  [Hyperparameters] {filename}")
+        except Exception as e:
+            print(f"  [Hyperparameters save failed] {e}")
 
     def _maybe_save_intermediate(self, mcts: MCTS) -> None:
         """Save intermediate results to a JSON file if save_every is enabled."""

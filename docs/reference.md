@@ -324,6 +324,8 @@ Parameters
 - **Persistence** — `output_prefix` is the path/prefix for run artifacts; without
   it nothing is written *and* `save_every` / `save_checkpoint_every` have no effect
   (a `UserWarning` is raised if they are requested without a prefix).
+  - at the start of every run with a prefix: `<output_prefix>_hyperparams.json`
+    (the run's hyperparameters — see §6.1a);
   - `save_every=N` → `<output_prefix>_step<N>.json` (ranked results) every `N`
     evaluated expressions;
   - `save_checkpoint_every=N` → `<output_prefix>_ckpt_step<N>.json` (resumable
@@ -334,6 +336,9 @@ Parameters
     `regressor` (`config` with all hyperparameters — including
     `valid_reward_weight` —, the training data, provenance and `meta.count_num`),
     so `Regressor.load`/`resume` can rebuild and continue from any of them.
+  - The `_hyperparams.json` file holds that same `config` mapping on its own (plus
+    `format`/`created`/`meta`), so the settings are archived — and reusable —
+    without a checkpoint (see §6.1a).
 
 Methods
 - `fit(seed=None, checkpoint=None)
@@ -354,6 +359,7 @@ prefix = out / "density_run"
 model = Regressor(..., output_prefix=str(prefix),
                   save_every=5000, save_checkpoint_every=5000)
 simplified, raw, n_evals, path, outputs = model.fit(seed=42)
+# results/density_run_hyperparams.json   <- the run's settings (written at start)
 # results/density_run_final.json        <- the trained model (ranked outputs)
 # results/density_run_ckpt_final.json   <- resumable state
 
@@ -370,6 +376,10 @@ artifacts — so the JSON is directly consumable by `cwsr-query`,
 | API | Purpose |
 |---|---|
 | `state_dict(mcts=None, outputs=None) -> dict` | serializable run description: `config` (all constructor settings), `data` (train/valid arrays), `results`, `meta` (provenance + counters). |
+| `hyperparameters() -> dict` | just the settings (`state_dict()["config"]`): every constructor knob, JSON-serializable. |
+| `save_hyperparameters(path=None) -> str` | write the hyperparameters to a JSON file; default `<output_prefix>_hyperparams.json` (`fit` writes it when a run starts), or an explicit `path` (works without a prefix). Raises `ValueError` if neither is available. |
+| `Regressor.load_hyperparameters(path_or_dict) -> dict` | reload that `config` mapping — from a `_hyperparams.json` file, a `state_dict()`, or a checkpoint written by `fit`. `ValueError` if the payload has no `config`. |
+| `Regressor.from_hyperparameters(path_or_dict, x_train, y_train[, x_valid, y_valid], **overrides)` | rebuild a model from saved settings on (possibly different) data; `overrides` replace individual entries; no MCTS state is attached and no results/warm start are required. |
 | `Regressor.from_state(state, **overrides)` | rebuild a `Regressor` from a state dict; `overrides` replace settings (`max_expressions=`, `output_prefix=`, `reward_func=`, or new `x_train=`/`y_train=`). |
 | `Regressor.load(path_or_dict, **overrides)` | load a checkpoint written by `fit` (file or parsed dict); returns the rebuilt model with `.checkpoint` and `.results` attached. |
 | `Regressor.resume(path, seed=None, **overrides)` | `load` + continue the search; returns the same tuple as `fit`. |
@@ -397,6 +407,40 @@ model = Regressor.from_results("results/density_run_final.json",
                                var_count=3, max_expressions=20000)
 model.fit(seed=42)      # prints "[Warm start] Seeded N expression(s) / M path(s)"
 ```
+
+**Hyperparameters only** — when you want the settings rather than the run (to
+re-tune on another dataset, or to log what a campaign used), `<prefix>_hyperparams.json`
+is written at the start of every run:
+
+```python
+{"format": "cwsr-regressor-hyperparameters", "created": "…",
+ "config": {"var_count": 3, "ops": ["mul", …], "max_expressions": 10000, …},
+ "meta": {"dataset": "…", "n_samples": …}}
+```
+
+```python
+from cwsr import Regressor
+
+# inspect / archive the settings of a finished (or running) run
+params = Regressor.load_hyperparameters("results/density_run_hyperparams.json")
+params["valid_reward_weight"], params["max_expressions"]
+
+# a checkpoint carries the same config, so this works too
+params = Regressor.load_hyperparameters("results/density_run_ckpt_final.json")
+
+# replay them on a different dataset; override only what changes
+model = Regressor.from_hyperparameters("results/density_run_hyperparams.json",
+                                       x_train=X2, y_train=y2,
+                                       max_expressions=50000)
+model.fit(seed=42)        # a fresh search, no MCTS state resumed
+
+# … or write them yourself (no output_prefix needed)
+Regressor(...).save_hyperparameters("shared/cwsr_params.json")
+```
+
+`reward_func` (a callable) and the data are not part of the hyperparameters, so
+pass both explicitly when rebuilding; `warm_start=` is available as an override
+when the previous champions should be carried over.
 
 Warm-start semantics: the loaded expressions are queued as evaluated candidates
 (so they appear in the new ranking and are never lost), and — when their
