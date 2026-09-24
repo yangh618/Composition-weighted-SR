@@ -1,6 +1,7 @@
 """Checkpoint save/load utilities for MCTS and Regressor state."""
 
 import json
+from collections import deque
 from typing import Any, Dict, List, Tuple, Optional
 from pathlib import Path
 
@@ -15,25 +16,74 @@ def _node_to_dict(node) -> Dict[str, Any]:
         "value": node.value,
         "is_terminal": node.is_terminal,
         "unexpanded_moves": list(node.unexpanded_moves),
-        "children_indices": [],  # filled later
+        "children_indices": [],  # filled in by _flatten_tree
     }
 
 
 def _flatten_tree(root_node) -> List[Dict[str, Any]]:
-    """Flatten the MCTS tree into a list of node dicts via BFS."""
-    nodes = []
-    index_map = {id(root_node): 0}
-    queue = [root_node]
+    """Flatten the MCTS tree into a list of node dicts via BFS.
+
+    Nodes are stored in level order and ``children_indices`` records the
+    position of each child in the returned list. Because the traversal is
+    breadth-first, a child always lands *after* the nodes that were already
+    queued, so its index is ``len(nodes) + len(queue)`` at enqueue time; every
+    node is therefore claimed by exactly one parent and a node's child indices
+    are strictly increasing. :func:`_rebuild_tree` relies on those invariants.
+    """
+    nodes: List[Dict[str, Any]] = []
+    queue = deque([root_node])
     while queue:
-        current = queue.pop(0)
+        current = queue.popleft()
         node_dict = _node_to_dict(current)
         nodes.append(node_dict)
+        children_indices = []
         for child in current.children:
-            index_map[id(child)] = len(nodes)
+            # everything still in the queue is written to ``nodes`` before this
+            # child, hence the offset by ``len(queue)``
+            children_indices.append(len(nodes) + len(queue))
             queue.append(child)
-        # Set children indices for the current node
-        node_dict["children_indices"] = [index_map[id(child)] for child in current.children]
+        node_dict["children_indices"] = children_indices
     return nodes
+
+
+def _indices_are_consistent(nodes: List[Dict[str, Any]]) -> bool:
+    """True when ``children_indices`` describes a tree in BFS order.
+
+    A breadth-first flattening guarantees that a child index is strictly
+    greater than its parent's position, in range, and claimed by a single
+    parent. Checkpoints written by the buggy flattening (every child of a node
+    collapsed onto the same index) break the last two rules, so they are
+    detected here and recovered by :func:`_children_indices_for`.
+    """
+    seen = set()
+    for i, nd in enumerate(nodes):
+        for child_idx in nd.get("children_indices", ()):
+            if isinstance(child_idx, bool) or not isinstance(child_idx, int):
+                return False
+            if child_idx <= i or child_idx >= len(nodes) or child_idx in seen:
+                return False
+            seen.add(child_idx)
+    return True
+
+
+def _children_indices_for(nodes: List[Dict[str, Any]]) -> List[List[int]]:
+    """Child indices for every node, reconstructed when the stored ones are broken.
+
+    Node dicts only carry the *count* of children reliably (the list length),
+    and the flat list is always in BFS order, so the original topology can be
+    recovered when ``children_indices`` cannot be trusted: the children of a
+    node are the next unclaimed entries of the list.
+    """
+    if _indices_are_consistent(nodes):
+        return [list(nd.get("children_indices", ())) for nd in nodes]
+
+    indices: List[List[int]] = []
+    next_index = 1
+    for nd in nodes:
+        count = len(nd.get("children_indices", ()))
+        indices.append(list(range(next_index, next_index + count)))
+        next_index += count
+    return indices
 
 
 def _rebuild_tree(nodes: List[Dict[str, Any]], mcts_instance):
@@ -42,6 +92,8 @@ def _rebuild_tree(nodes: List[Dict[str, Any]], mcts_instance):
 
     if not nodes:
         return None
+
+    children_indices = _children_indices_for(nodes)
 
     # Create all nodes first
     mcts_nodes = [
@@ -56,7 +108,9 @@ def _rebuild_tree(nodes: List[Dict[str, Any]], mcts_instance):
         node.value = nd["value"]
         node.is_terminal = nd["is_terminal"]
         node.unexpanded_moves = list(nd["unexpanded_moves"])
-        for child_idx in nd["children_indices"]:
+        for child_idx in children_indices[i]:
+            if not 0 < child_idx < len(mcts_nodes):
+                continue  # truncated/hand-edited data: drop the dangling child
             child = mcts_nodes[child_idx]
             child.parent = node
             node.children.append(child)
