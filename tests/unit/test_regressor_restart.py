@@ -171,6 +171,58 @@ def test_resume_continues_the_search(trained_run, capsys):
 
 
 # ---------------------------------------------------------------------------
+# A reloaded tree must still describe replayable operator paths
+# ---------------------------------------------------------------------------
+def _root_to_leaf_paths(node, prefix=()):
+    """All operator paths from ``node`` down to its leaves (root move excluded)."""
+    prefix = prefix + ((node.move,) if node.move else ())
+    if not node.children:
+        return [prefix]
+    return [path for child in node.children
+            for path in _root_to_leaf_paths(child, prefix)]
+
+
+def test_reloaded_tree_paths_are_replayable_on_the_expression_tree(tiny_model):
+    """The loaded tree must describe the *same* operator paths as the saved one.
+
+    Selection replays a node's path onto the expression tree, so a wrong
+    topology does not merely lose branches — it builds paths the tree rejects
+    (``Invalid op, not in available ops``), which is exactly what broke a second
+    resume.
+    """
+    import copy
+
+    from cwsr.checkpoint import mcts_from_dict, mcts_to_dict
+    from cwsr.mcts import MCTS_Node
+
+    mcts = tiny_model._create_mcts()
+    root = mcts.root
+    # root -> add -> (mul -> (x0, x0), x0)  and  root -> sqrt -> x0: the ``mul``
+    # grandchild lands after ``sqrt`` in BFS order, the case the old indices broke
+    add = MCTS_Node(mcts=mcts, parent=root, move="add")
+    sqrt = MCTS_Node(mcts=mcts, parent=root, move="sqrt")
+    mul = MCTS_Node(mcts=mcts, parent=add, move="mul")
+    root.children = [add, sqrt]
+    add.children = [mul, MCTS_Node(mcts=mcts, parent=add, move="x0")]
+    mul.children = [MCTS_Node(mcts=mcts, parent=mul, move="x0"),
+                    MCTS_Node(mcts=mcts, parent=mul, move="x0")]
+    sqrt.children = [MCTS_Node(mcts=mcts, parent=sqrt, move="x0")]
+
+    restored = tiny_model._create_mcts()
+    mcts_from_dict(mcts_to_dict(mcts), restored)
+
+    original_paths = _root_to_leaf_paths(root)
+    restored_paths = _root_to_leaf_paths(restored.root)
+    assert sorted(restored_paths) == sorted(original_paths)
+
+    # every restored path is a valid operator sequence for this op set / max_depth
+    for path in restored_paths:
+        state = copy.deepcopy(tiny_model.exp_tree)
+        for op in path:
+            state.add_op(op)
+
+
+# ---------------------------------------------------------------------------
 # Warm start from a results file
 # ---------------------------------------------------------------------------
 def test_from_results_warm_starts_a_new_search(trained_run, capsys):

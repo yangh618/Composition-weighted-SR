@@ -119,3 +119,77 @@ def test_rebuilding_an_empty_tree_returns_none():
     from cwsr.checkpoint import _rebuild_tree
 
     assert _rebuild_tree([], make_stub_mcts()) is None
+
+
+# ---------------------------------------------------------------------------
+# Tree topology (branching + uneven depth) survives a save/load round trip
+# ---------------------------------------------------------------------------
+def _tree_signature(node) -> dict:
+    """Move + child structure of a tree as plain data (recursive)."""
+    return {"move": node.move,
+            "children": [_tree_signature(child) for child in node.children]}
+
+
+def _branching_tree() -> MCTS_Node:
+    """root -> (add -> (mul -> x0, x1), sqrt -> x0): branching *and* depth.
+
+    BFS order is root, add, sqrt, mul, x1, x0, x0 — the child of ``add`` lands
+    after ``sqrt``, which is exactly the case the old flattening mis-indexed.
+    """
+    mcts = make_stub_mcts(seed_rewards=())
+    root = MCTS_Node(mcts=mcts, parent=None, move="")
+    add = MCTS_Node(mcts=mcts, parent=root, move="add")
+    sqrt = MCTS_Node(mcts=mcts, parent=root, move="sqrt")
+    mul = MCTS_Node(mcts=mcts, parent=add, move="mul")
+    x1 = MCTS_Node(mcts=mcts, parent=add, move="x1")
+    x0a = MCTS_Node(mcts=mcts, parent=sqrt, move="x0")
+    x0b = MCTS_Node(mcts=mcts, parent=mul, move="x0")
+    root.children, add.children = [add, sqrt], [mul, x1]
+    sqrt.children, mul.children = [x0a], [x0b]
+    return root
+
+
+def test_flatten_records_breadth_first_child_indices():
+    from cwsr.checkpoint import _flatten_tree, _indices_are_consistent
+
+    flat = _flatten_tree(_branching_tree())
+
+    assert [nd["move"] for nd in flat] == ["", "add", "sqrt", "mul", "x1", "x0", "x0"]
+    assert flat[0]["children_indices"] == [1, 2]   # add, sqrt
+    assert flat[1]["children_indices"] == [3, 4]   # mul, x1 (mul is *not* sqrt)
+    assert flat[2]["children_indices"] == [5]
+    assert flat[3]["children_indices"] == [6]
+    assert _indices_are_consistent(flat)
+
+
+def test_round_trip_preserves_a_branching_tree():
+    from cwsr.checkpoint import _flatten_tree, _rebuild_tree
+
+    original = _branching_tree()
+    restored = _rebuild_tree(_flatten_tree(original), make_stub_mcts(seed_rewards=()))
+
+    assert _tree_signature(restored) == _tree_signature(original)
+    # every node has exactly the parent it started with
+    for parent in (restored, restored.children[0]):
+        for child in parent.children:
+            assert child.parent is parent
+
+
+def test_legacy_child_indices_are_recovered_from_child_counts():
+    """Checkpoints written by the old flattening only carry usable child counts.
+
+    The old code assigned every child of a node the *same* index, so loading a
+    branching tree produced a broken (and non-replayable) tree. The count of
+    children per node is still correct, and BFS order is preserved, which is
+    enough to rebuild the original tree.
+    """
+    from cwsr.checkpoint import _flatten_tree, _indices_are_consistent, _rebuild_tree
+
+    legacy = _flatten_tree(_branching_tree())
+    for i, nd in enumerate(legacy):                 # re-create the old index values
+        nd["children_indices"] = [i + 1] * len(nd["children_indices"])
+
+    assert not _indices_are_consistent(legacy)
+    restored = _rebuild_tree(legacy, make_stub_mcts(seed_rewards=()))
+    assert _tree_signature(restored) == _tree_signature(_branching_tree())
+

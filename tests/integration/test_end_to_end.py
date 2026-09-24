@@ -153,3 +153,42 @@ def test_train_helper_writes_its_output_file(tmp_path):
     written = tmp_path / "run.json"
     assert written.exists()
     assert json.loads(written.read_text()) == json.loads(json.dumps(outputs))
+
+
+def test_a_resumed_run_can_be_resumed_again(tmp_path):
+    """Regression: resuming *twice* used to crash with ``Invalid op``.
+
+    Loading a checkpoint rebuilds the MCTS tree from its flat representation, so
+    a wrong breadth-first child indexing silently re-wired the branches. The next
+    selection then replayed an operator onto an ``ExpTree`` state that could no
+    longer accept it (``ValueError: Invalid op, not in available ops``), which
+    broke every resume beyond the first. The checkpoint written *by a resumed
+    run* must therefore be resumable again.
+    """
+    from cwsr import Regressor
+    from tests.fixtures import synthetic as S
+
+    X, y, _ = S.tiny_linear_problem(n=12)
+    prefix = tmp_path / "run"
+    model = Regressor(x_train=X, y_train=y, x_valid=X, y_valid=y,
+                      output_prefix=str(prefix), var_count=1,
+                      ops=["add", "mul", "sqrt"], max_depth=4,
+                      max_expressions=4, num_batches=2, num_trials=1,
+                      num_parallel=1, save_checkpoint_every=2,
+                      optimization_method="LD_LBFGS", seed=0)
+    model.fit(seed=0)
+
+    # first resume: from the checkpoint of the original run
+    _, _, evaluations, _, _ = Regressor.resume(f"{prefix}_ckpt_final.json",
+                                               seed=0, max_expressions=6)
+    assert evaluations > 0
+
+    # second resume: from a checkpoint written *by the resumed run*
+    written = sorted(tmp_path.glob("run_ckpt_step*.json"),
+                     key=lambda path: int(path.stem.rsplit("step", 1)[1]))
+    assert len(written) >= 2, [path.name for path in written]
+
+    _, _, evaluations, _, outputs = Regressor.resume(written[-1], seed=0,
+                                                     max_expressions=8)
+    assert evaluations >= json.loads(written[-1].read_text())["mcts"]["count_num"]
+    assert outputs and outputs[0]["expression"]
